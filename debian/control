@@ -1,0 +1,16 @@
+Source: n4d-ldap
+Section: admin
+Priority: extra
+Maintainer: Raul Rodrigo Segura <lliurex_devel3@edu.gva.es>
+Build-Depends: debhelper (>= 8.0.0), n4d-dev
+Standards-Version: 3.9.5
+Homepage: http://www.lliurex.net
+#Vcs-Svn: http://svn.lliurex.net/pandora/n4d-ldap/trunk
+
+Package: n4d-ldap
+Architecture: all
+Pre-depends: n4d, lliurex-base-files (>= 13.06.16), slapd
+Depends: ${shlibs:Depends}, ${misc:Depends},  python-ldap, ldap-utils, python-jinja2, rng-tools, python-llxvars, python, n4d-lliurex-base (>= 0.7), n4d-netfolders
+Description: N4D plugin for configuring ldap server
+ This plugin configure ldap server with some templates
+ 
