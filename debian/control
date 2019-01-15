@@ -3,7 +3,7 @@ Section: admin
 Priority: extra
 Maintainer: Raul Rodrigo Segura <lliurex_devel3@edu.gva.es>
 Build-Depends: debhelper (>= 8.0.0), n4d-dev
-Standards-Version: 3.9.5
+Standards-Version: 3.9.7
 Homepage: http://www.lliurex.net
 #Vcs-Svn: http://svn.lliurex.net/pandora/n4d-ldap/trunk
 
