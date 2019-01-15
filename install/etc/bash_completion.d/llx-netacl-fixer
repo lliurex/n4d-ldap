@@ -1,0 +1,16 @@
+_llx-netacl-fixer() 
+{
+    local cur prev opts base
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    #
+    #  The basic options we'll complete.
+    #
+    opts="base-dirs students teachers share teachers-share easy-sites jclic-aula all"
+
+   COMPREPLY=($(compgen -W "${opts}" -- ${cur}))  
+   return 0
+}
+[ "$have" ] && complete -F _llx-netacl-fixer llx-netacl-fixer

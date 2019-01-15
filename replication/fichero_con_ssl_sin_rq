@@ -1,0 +1,305 @@
+======================== 
+Pasos en el servidor
+========================
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 254
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: {1}syncprov.la
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: lliurex123
+EOF
+
+======================== 
+Pasos en el esclavo
+========================
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 1
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: {1}syncprov.la
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: lliurex123
+EOF
+
+================================================
+Pasos en los dos
+===============================================
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 254 ldap://10.3.0.254/
+olcServerID: 1 ldap://10.3.0.1/
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcOverlay=syncprov,olcDatabase={0}config,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+replace: olcSyncRepl
+olcSyncRepl: rid=254 provider=ldap://10.3.0.254/ binddn="cn=config" 
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off 
+  tls_reqcert=never 
+olcSyncRepl: rid=001 provider=ldap://10.3.0.1/ binddn="cn=config" 
+  bindmethod=simple credentials=lliurex123 
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+
+***************************************
+Apagar Slav
+***************************************
+
+######################################
+      Otro cliente
+######################################
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 2
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: {1}syncprov.la
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: lliurex123
+EOF
+
+
+-------------------------------------
+En el server y el nuevo slave
+-------------------------------------
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 254 ldap://10.3.0.254/
+olcServerID: 1 ldap://10.3.0.1/
+olcServerID: 2 ldap://10.3.0.2/
+EOF
+
+========================================================
+ESTO EJECUTARLO EN EL SLAVE
+========================================================
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcOverlay=syncprov,olcDatabase={0}config,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+replace: olcSyncRepl
+olcSyncRepl: rid=254 provider=ldap://10.3.0.254/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+olcSyncRepl: rid=001 provider=ldap://10.3.0.1/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+olcSyncRepl: rid=002 provider=ldap://10.3.0.2/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+========================================================
+END ESTO SOLO EJECUTARLO EN EL SLAVE
+========================================================
+
+========================================================
+ESTO EJECUTARLO EN EL MASTER
+========================================================
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+replace: olcSyncRepl
+olcSyncRepl: rid=254 provider=ldap://10.3.0.254/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+olcSyncRepl: rid=001 provider=ldap://10.3.0.1/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+olcSyncRepl: rid=002 provider=ldap://10.3.0.2/ binddn="cn=config"
+  bindmethod=simple credentials=lliurex123
+  searchbase="cn=config" type=refreshAndPersist
+  retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never 
+EOF
+
+========================================================
+END ESTO EJECUTARLO EN EL MASTER
+========================================================
+
+
+###
+	TESTS
+###
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+replace: olcLogLevel
+olcLogLevel: 16384
+EOF
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={1}hdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=lliurex
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={1}hdb,cn=config
+changetype: modify
+delete: olcRootDN
+-
+add: olcRootDN
+olcRootDN: cn=admin,dc=lliurex,dc=net
+EOF
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+delete: olcLogLevel
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: cn=config
+changetype: modify
+replace: olcLogLevel
+olcLogLevel: 12355 
+EOF
+
+
+ldapsearch -Y EXTERNAL -H ldapi:// -b cn=config | less
+
+ldapsearch -x -LLL -H ldapi:// -s base -b 'cn=config' contextCSN
+###
+
+ldapsearch -Y EXTERNAL -LLL -H ldapi:// -s base -b 'cn=config' contextCSN
+
+
+iptables -A INPUT -p tcp --dport 389 -s 127.0.0.1 -j ACCEPT
+iptables -A INPUT -p tcp --dport 389 -s 10.3.0.1 -j ACCEPT
+iptables -A INPUT -p tcp --dport 636 -s 127.0.0.1 -j ACCEPT
+iptables -A INPUT -p tcp --dport 636 -s 10.3.0.1 -j ACCEPT
+iptables -A INPUT -p tcp --dport 636 -j DROP
+iptables -A INPUT -p tcp --dport 389 -j DROP
+
+
+
+==============================================
+Replicacion de datos
+==============================================
+
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcDatabase={1}hdb,cn=config
+changetype: modify
+add: olcLimits
+olcLimits: dn.exact="cn=admin,dc=ma5,dc=lliurex,dc=net" time.soft=unlimited 
+  time.hard=unlimited size.soft=unlimited size.hard=unlimited
+-
+add: olcSyncRepl
+olcSyncRepl: rid=001 provider=ldap://10.3.0.254/ binddn="cn=admin,dc=ma5,dc=lliurex,dc=net" 
+  bindmethod=simple credentials=lliurex searchbase="dc=ma5,dc=lliurex,dc=net" 
+  type=refreshOnly interval=00:00:00:10 retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never
+olcSyncRepl: rid=002 provider=ldap://10.3.0.1/ binddn="cn=admin,dc=ma5,dc=lliurex,dc=net" 
+  bindmethod=simple credentials=lliurex searchbase="dc=ma5,dc=lliurex,dc=net" 
+  type=refreshOnly interval=00:00:00:10 retry="5 5 300 5" timeout=1 schemachecking=off
+  tls_reqcert=never
+-
+add: olcDbIndex
+olcDbIndex: entryUUID  eq
+-
+add: olcDbIndex
+olcDbIndex: entryCSN  eq
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
+dn: olcOverlay=syncprov,olcDatabase={1}hdb,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+EOF
+
+

@@ -1,0 +1,22 @@
+{
+    "cn=lliurex,cn=schema,cn=config":
+    {
+        "objectClass": "olcSchemaConfig",
+        "cn": "lliurex",
+        "olcAttributeTypes":
+            ["{0}( 1.3.6.1.4.1.8149.20.1.1 NAME 'x-lliurex-usertype' DESC 'User creation mode' EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+             "{1}( 1.3.6.1.4.1.8149.20.1.2 NAME 'x-lliurex-grouptype' DESC 'Group creation mode' EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+             "{2}( 1.3.6.1.4.1.8149.20.1.3 NAME 'x-lliurex-nia' DESC 'Student Identification Number' EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+             "{3}( 1.3.6.1.4.1.8149.20.1.4 NAME 'x-lliurex-record' DESC 'Student record from school and high school' EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+             "{4}( 1.3.6.1.4.1.8149.20.1.5 NAME 'x-lliurex-nif' DESC 'User creation mode' EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 )",
+             "{5}( 1.3.6.1.4.1.8149.20.1.6 NAME 'x-lliurex-grouporigin' DESC 'Original code of group' EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+             "{6}( 1.3.6.1.4.1.8149.20.1.7 NAME 'x-lliurex-xid-counter' DESC 'counter for next uid for group' EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+             "{7}( 1.3.6.1.4.1.8149.20.1.8 NAME 'x-lliurex-freeze' DESC 'Flag to freeze' EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )",
+             ],
+        "olcObjectClasses":
+            ["{0}( 1.3.6.1.4.1.8149.20.2.1 NAME 'x-lliurex-user' DESC 'Lliurex users' SUP organizationalPerson STRUCTURAL MAY ( x-lliurex-usertype $ x-lliurex-nia $ x-lliurex-record $ x-lliurex-nif $ x-lliurex-freeze) )",
+             "{1}( 1.3.6.1.4.1.8149.20.2.2 NAME 'x-lliurex-group' DESC 'Lliurex Groups' AUXILIARY MAY ( x-lliurex-grouptype $ x-lliurex-grouporigin $ x-lliurex-freeze) )",
+             "{2}( 1.3.6.1.4.1.8149.20.2.3 NAME 'x-lliurex-ou-properties' DESC 'Attributes for organization units' AUXILIARY MAY ( x-lliurex-xid-counter ) )",
+             "{3}( 1.3.6.1.4.1.8149.20.2.4 NAME 'x-lliurex-group-acl' DESC 'Lliurex class to support acl ' AUXILIARY MAY member )"]
+    }
+ }

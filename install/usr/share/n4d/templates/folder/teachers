@@ -1,0 +1,9 @@
+{
+	"05_teachers":{
+				"path" : "/net/server-sync/home/teachers",
+				"perm" : 2770 ,
+				"owner" : "nobody",
+				"group" : "nogroup",
+				"acl" : [["-d -m","u::rwx"],["-d -m","g:10001:rwx"],["-d -m","g:10003:---"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10003:r-x"],["-m","g:10001:rwx"]]
+				}
+}

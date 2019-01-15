@@ -1,0 +1,8 @@
+{
+	"{{ LDAP_BASE_DN }}":
+		{
+		"objectClass":["dcObject","organization","top"],
+		"o":"server",
+		"dc":"ma5"
+		}
+}

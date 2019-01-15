@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import xmlrpclib
+import ldap
+import grp
+import time
+import smbpasswd
+import sys
+
+def get_ldap_pass():
+
+	try:
+		f=open("/etc/lliurex-secrets/passgen/ldap.secret")
+		lines=f.readlines()
+		f.close()
+		password=lines[0].replace("\n","")
+		return password
+	except:
+		return None
+		
+
+
+def mod_ldap():
+	
+	c=xmlrpclib.ServerProxy("https://localhost:9779")
+	url=c.get_variable("","VariablesManager","CLIENT_LDAP_URI")
+	base_dn=c.get_variable("","VariablesManager","LDAP_BASE_DN")
+	path="uid=netadmin,ou=Admins,ou=People,dc=ma5,dc=lliurex,dc=net"
+	adm_path="cn=admin,"+base_dn	
+	password=get_ldap_pass()
+	ldp=ldap.initialize(url)
+	ldp.bind_s(adm_path,password)
+
+	mod_list=[]
+	mod=( ldap.MOD_REPLACE, "sambaNTPassword", smbpasswd.nthash(password))
+	mod_list.append(mod)
+	mod=( ldap.MOD_REPLACE, "sambaLMPassword", smbpasswd.lmhash(password))
+	mod_list.append(mod)
+	mod=( ldap.MOD_REPLACE, "sambaPwdLastSet", str(int(time.time())))
+	mod_list.append(mod)
+	mod=( ldap.MOD_REPLACE, "sambaAcctFlags", "[U]")
+	mod_list.append(mod)
+	sys.stdout.write("* Fixing netadmin...\t")
+	ldp.modify_s("uid=netadmin,ou=Admins,ou=People,dc=ma5,dc=lliurex,dc=net",mod_list)
+	sys.stdout.write("OK\n")
+	
+#def mod_ldap
+
+
+try:
+	mod_ldap()
+	
+except Exception as e:
+	pass

@@ -1,0 +1,9 @@
+{
+	"05_others":{
+				"path" : "/net/server-sync/home/others",
+				"perm" : 2770 ,
+				"owner" : "nobody",
+				"group" : "nogroup",
+				"acl" : [["-d -m","g:10001:rwx"],["-d -m","g:others:---"],["-d -m","u::rwx"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10001:rwx"],["-m","g:others:r-x"]]
+				}
+}

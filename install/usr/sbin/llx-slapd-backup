@@ -1,0 +1,85 @@
+#!/bin/bash
+function usage(){
+	echo -e "usage\n"
+}
+if [ $# -lt 2 ]; then
+	usage
+fi
+
+capture_diagnostics() {                                                 # {{{
+# Run the command passed and capture the diagnostic output in a temporary
+# file. You can dump that file using release_diagnostics.
+
+        # Create the temporary file
+        local tmpfile
+        tmpfile=`mktemp`
+        exec 7<>"$tmpfile"
+        rm "$tmpfile"
+
+        # Run the program and capture stderr. If the program fails the
+        # function fails with the same status.
+        echo $tmpfile
+        "$@" 2>&7 || { rc=$?; echo $rc ; return $rc ;}
+}
+
+OPTION=$1
+BACKUPFILE=$2
+BACKUPDIR=$(mktemp -d)
+case $OPTION in 
+dump)
+	
+	systemctl stop slapd
+	slapcat -n 0 > ${BACKUPDIR}/config.ldif
+	slapcat -n 1 > ${BACKUPDIR}/data.ldif
+	mkdir -p ${BACKUPDIR}/install/etc/default
+	mkdir -p ${BACKUPDIR}/install/etc/lliurex-secrets/passgen/
+	mkdir -p ${BACKUPDIR}/install/etc/ldap/ssl
+	rsync -ptgox /etc/ldap/ssl/slapd.cert ${BACKUPDIR}/install/etc/ldap/ssl/
+	rsync -ptgox /etc/ldap/ssl/slapd.key ${BACKUPDIR}/install/etc/ldap/ssl/
+	rsync -ptgox /etc/default/slapd  ${BACKUPDIR}/install/etc/default/
+	rsync -ptgox /etc/lliurex-secrets/passgen/ldap.secret ${BACKUPDIR}/install/etc/lliurex-secrets/passgen/
+	systemctl start slapd
+	
+	tar -czf $BACKUPFILE -C $BACKUPDIR .
+	# crear un tar.gz con los ficheros
+
+	;;
+restore)
+
+	tar -xzf $BACKUPFILE -C $BACKUPDIR	
+
+	SLAPD_CONF="/etc/ldap/slapd.d"
+	SLAPD_DB_PATH="/var/lib/ldap"
+	SLAPD_USER="openldap"
+	SLAPD_GROUP="openldap"
+	SLAPD_RUN="/run/slapd"
+
+	systemctl stop slapd
+	rm -rf ${SLAPD_CONF} || true
+	mkdir -p -m 0755 $SLAPD_CONF
+	chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_CONF || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+	rm -rf $SLAPD_DB_PATH || true
+	mkdir -m 0700 $SLAPD_DB_PATH || true
+	chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_DB_PATH || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+	SLAPD_RUN="/run/slapd"
+	rm -rf $SLAPD_RUN || true
+	mkdir -m 0755 $SLAPD_RUN || true
+	chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_RUN || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+
+	capture_diagnostics slapadd -F "${SLAPD_CONF}" -b "cn=config" -l ${BACKUPDIR}/config.ldif
+	chown -R ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_CONF || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+	capture_diagnostics slapadd -l ${BACKUPDIR}/data.ldif
+	chown -R ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_DB_PATH || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+	rsync -ax ${BACKUPDIR}/install/* /
+	chmod 600 /etc/lliurex-secrets/passgen/ldap.secret
+	systemctl start slapd 
+	
+	;;
+esac
+
+

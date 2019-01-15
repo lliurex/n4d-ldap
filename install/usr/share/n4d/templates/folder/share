@@ -1,0 +1,9 @@
+{
+	"05_share":{
+			"path" : "/net/server-sync/share",
+			"perm" : 2775 , 
+			"owner" : "nobody",
+			"group" : "nogroup",
+			"acl" : [["-d -m","g:www-data:r-x"],["-d -m","g:10003:rwx"],["-d -m","g:10001:rwx"],["-d -m","g:10004:r-x"],["-d -m","u::rwx"],["-d -m","o::r-x"],["-d -m","m::rwx"],["-m","g:10003:rwx"],["-m","g:10001:rwx"],["-m","g:10004:r-x"],["-m","g:www-data:r-x"]]
+			}
+}

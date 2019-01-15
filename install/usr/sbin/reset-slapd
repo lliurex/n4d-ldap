@@ -1,0 +1,96 @@
+#!/bin/bash
+
+usage(){
+	echo $0
+}
+
+die(){
+    echo $@
+    exit 1
+}
+
+
+capture_diagnostics() {                                                 # {{{
+# Run the command passed and capture the diagnostic output in a temporary
+# file. You can dump that file using release_diagnostics.
+
+        # Create the temporary file
+        local tmpfile
+        tmpfile=`mktemp`
+        exec 7<>"$tmpfile"
+        #rm "$tmpfile"
+
+        # Run the program and capture stderr. If the program fails the
+        # function fails with the same status.
+	echo $tmpfile
+        "$@" 2>&7 || { rc=$?; echo $rc ; return $rc ;}
+}
+
+
+# You must root
+[ $UID -eq 0 ] || die "You must a root"
+
+# Load default configuration
+if [ -f "/etc/default/slapd" ]; then
+        . /etc/default/slapd
+fi
+
+# Load the default location of the slapd config file
+if [ -z "$SLAPD_CONF" ]; then
+    SLAPD_CONF="/etc/ldap/slapd.d"
+else
+    if [ ! -d $SLAPD_CONF ]; then
+        SLAPD_CONF="/etc/ldap/slapd.d"
+        sed -i "s%SLAPD_CONF=.*%SLAPD_CONF=$SLAPD_CONF%g" /etd/default/slapd
+    fi
+fi
+
+#Check if all things are correctly
+    [ -e "/usr/share/slapd/slapd.init.ldif" ] || die "Template file /usr/share/slapd/slapd.init.ldif not exists. Please reinstall slapd package"
+
+#
+# TODO
+# This variable must be calculated 
+#
+SLAPD_DB_PATH="/var/lib/ldap"
+
+systemctl stop slapd
+
+#Check if directories has correct permissions
+
+rm -rf ${SLAPD_CONF} || true
+mkdir -p -m 0755 $SLAPD_CONF
+chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_CONF || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+
+# Void all directories
+
+
+rm -rf $SLAPD_DB_PATH || true
+mkdir -m 0700 $SLAPD_DB_PATH || true
+chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_DB_PATH || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+SLAPD_RUN="/run/slapd"
+rm -rf $SLAPD_RUN || true
+mkdir -m 0755 $SLAPD_RUN || true
+chown ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_RUN || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+
+backend="mdb"
+backendobjectclass="olcMdbConfig"
+basedn='dc=ma5,dc=lliurex,dc=net'
+adminpass='{SSHA}o4UvsuAZNXNkZPgPwgktIvhEli8IdhFJ'
+backendoptions=""
+initldif=`mktemp -t slapadd.XXXXXX`
+cat /usr/share/slapd/slapd.init.ldif > ${initldif}
+
+# Change some defaults
+sed -i -e "/@BACKENDOPTIONS@/d" ${initldif}
+sed -i -e "s|@BACKEND@|$backend|g" ${initldif}
+sed -i -e "s|@BACKENDOBJECTCLASS@|$backendobjectclass|g" ${initldif}
+sed -i -e "s|@SUFFIX@|$basedn|g" ${initldif}
+sed -i -e "s|@PASSWORD@|$adminpass|g" ${initldif}
+sed -i -e "s|olcSizeLimit: 500|olcSizeLimit: unlimited|g" ${initldif}
+
+capture_diagnostics slapadd -F "${SLAPD_CONF}" -b "cn=config" -l "${initldif}" || die "Have an error when load init configuration on config directory"
+chown -R ${SLAPD_USER}:${SLAPD_GROUP} $SLAPD_CONF || die "On /etc/default/slapd aren't SLAPD_USER or SLAPD_GROUP variable"
+systemctl start slapd

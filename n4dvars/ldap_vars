@@ -1,0 +1,51 @@
+{
+    "CLIENT_LDAP_URI": {
+        "function": "lliurex.variables.client_ldap_uri.init", 
+        "packages": [
+            "n4d-ldap"
+        ], 
+        "description": "Ldap uri for ssl connections", 
+        "value": null
+    }, 
+    "CLIENT_LDAP_URI_NOSSL": {
+        "function": "lliurex.variables.client_ldap_uri_nossl.init", 
+        "packages": [
+            "n4d-ldap"
+        ], 
+        "description": "LDAP uri for non-ssl connections", 
+        "value": null
+    }, 
+    "LDAP_BASE_DN": {
+        "function": "lliurex.variables.ldap_base_dn.init", 
+        "packages": [
+            "n4d-ldap"
+        ], 
+        "description": "LDAP base distinguished name for lliurex",
+        "value": null
+    },
+    "INTERFACE_REPLICATION": {
+        "function": "lliurex.variables.interface_replication.init", 
+        "packages": [
+            "n4d-ldap"
+        ], 
+        "description": "Interface to replicate ldap",
+        "value": null
+    },
+    "LDAP_SID": {
+        "function": "lliurex.variables.ldap_sid.init", 
+        "packages": [
+            "n4d-ldap"
+        ], 
+        "description": "ServerID",
+        "value": null
+    },
+    "MASTER_SERVER_IP":{
+        "function":"lliurex.variables.master_server_ip.init",
+        "packages":[
+            "n4d-ldap"
+        ],
+        "description": "Master server ip in Center Model",
+        "value": null
+    }
+
+}

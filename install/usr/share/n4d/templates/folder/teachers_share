@@ -1,0 +1,9 @@
+{
+	"05_teachers_share":{
+					"path" : "/net/server-sync/teachers_share",
+					"perm" : 2770 ,
+					"owner" : "nobody",
+					"group" : "nogroup",
+					"acl" : [["-d -m","g:10003:rwx"],["-d -m","g:10001:rwx"],["-d -m","u::rwx"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10003:rwx"],["-m","g:10001:rwx"]]
+					}
+}

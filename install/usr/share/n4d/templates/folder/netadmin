@@ -1,0 +1,25 @@
+{
+	"05_netadmin_base":{
+				"path" : "/net/server-sync/home/admins/netadmin",
+				"perm" : 2770 ,
+				"owner" : "1042",
+				"group" : "nogroup",
+				"acl" : [["-d -m","u::rwx"],["-d -m","g:10001:rwx"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10001:rwx"]]
+				},
+				
+	"05_netadmin_desktop":{
+				"path" : "/net/server-sync/home/admins/netadmin/Desktop",
+				"perm" : 2770 ,
+				"owner" : "1042",
+				"group" : "nogroup",
+				"acl" : [["-d -m","u::rwx"],["-d -m","g:10001:rwx"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10001:rwx"]]
+				},
+				
+	"05_netadmin_documents":{
+				"path" : "/net/server-sync/home/admins/netadmin/Documents",
+				"perm" : 2770 ,
+				"owner" : "1042",
+				"group" : "nogroup",
+				"acl" : [["-d -m","u::rwx"],["-d -m","g:10001:rwx"],["-d -m","o::---"],["-d -m","m::rwx"],["-m","g:10001:rwx"]]
+				}
+}

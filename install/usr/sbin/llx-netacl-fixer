@@ -1,0 +1,248 @@
+#!/usr/bin/env python
+
+import os
+import re
+import stat
+import subprocess
+import sys
+
+LOCAL_CONF_FOLDER="/var/lib/lliurex-folders/local/"
+
+NET="/net/server-sync/"
+
+STUDENTS_HOME = NET+ "home/students/"
+TEACHERS_HOME = NET + "home/teachers/"
+SHARE = NET+ "share/"
+TEACHERS_SHARE = NET+ "teachers_share/"
+EASY_SITES = NET + "easy-sites/"
+JCLIC_AULA = SHARE + "jclic-aula/"
+
+def get_acl_info(path):
+		
+	info={}
+	regex="(\w+:|\A)(user|group|mask|other):([a-zA-Z0-9\-]*):([r|w|x|\-]{1,3})\s*[#]*(\S+)*\Z"
+	os.environ["LANG"]="C"
+	p=subprocess.Popen(["getfacl",path],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	out=p.communicate()[0]
+		
+	info["acl"]=[]
+	info["perm"]=int(str(oct(stat.S_IMODE(os.lstat(path).st_mode))).lstrip("0"))
+	info["path"]=path
+		
+	for item in out.split("\n"):
+			
+		#item=item.strip("\n")
+		x=re.match(regex,item)
+			
+		if x!=None:
+				
+			special=x.group(1)
+			type_=x.group(2)
+			custom_group=x.group(3)
+			acl=x.group(4)
+			extra=x.group(5)
+				
+			if special.find("default")!=-1:
+				mode="-d -m"
+			else:
+				mode="-m"
+				
+			if type_=="group":
+				type_="g:"
+			elif type_=="user":
+				type_="u:"
+			elif type_=="mask":
+				type_="m:"
+			elif type_=="other":
+				type_="o:"
+					
+				
+			info["acl"].append([mode,type_+custom_group+":"+acl])
+					
+
+
+	return info
+		
+		
+def get_acl_from_llxconfig(path):
+	
+		path=path.rstrip("/")
+		ret={}
+		
+		for f in os.listdir(LOCAL_CONF_FOLDER):
+			try:
+				ff=open(LOCAL_CONF_FOLDER+f)
+				txt="".join(ff.readlines())
+				ff.close()
+				orig_info=eval(txt)
+				for item in orig_info:
+					if path == orig_info[item]["path"] or path+"/"==orig_info[item]["path"]:
+						#print orig_info[item]
+						return orig_info[item]
+					
+			except Exception as e:
+				print(e,"!!")
+	
+		return ret
+	
+
+def apply_acls(info,dir,filter=None):
+	
+	acls=[]
+	
+	if "acl" in info:
+		
+		try:
+			for acl in info["acl"]:
+				mode,rule=acl
+				if mode.find("-d -m")!=-1:
+					acls.append(["-m",rule])
+					acls.append(["-d -m",rule])
+
+			for path in os.listdir(dir):
+				path=dir+path
+				if not os.path.islink(path):
+					
+					if filter!=None:
+						if filter in path:
+							#print "[!] Skipping" , path ,"..."
+							continue
+					
+					for acl in acls:
+						mode,rule=acl
+						cmd='setfacl -RP %s %s "%s"'%(mode,rule,path)
+						#print ("\t* Setting acls to %s ..."%path)
+						os.system(cmd)
+						
+		except Exception as e:
+			print(e)
+
+
+def fix_students():
+	
+	print("[*] Fixing %s ..."%STUDENTS_HOME)
+	#info=get_acl_info(STUDENTS_HOME)
+	info=get_acl_from_llxconfig(STUDENTS_HOME)
+	apply_acls(info,STUDENTS_HOME)
+	
+#def fix_students
+
+def fix_teachers():
+	
+	print("[*] Fixing %s ..."%TEACHERS_HOME)
+	#info=get_acl_info(TEACHERS_HOME)
+	info=get_acl_from_llxconfig(TEACHERS_HOME)
+	apply_acls(info,TEACHERS_HOME)
+	
+#def fix_teachers
+
+def fix_share():
+	print("[*] Fixing %s ..."%SHARE)
+	#info=get_acl_info(SHARE)
+	info=get_acl_from_llxconfig(SHARE)
+	filter=JCLIC_AULA.rstrip("/")
+	apply_acls(info,SHARE,filter)
+
+#def fix_share
+
+def fix_teachers_share():
+	print("[*] Fixing %s ..."%TEACHERS_SHARE)
+	#info=get_acl_info(TEACHERS_SHARE)
+	info=get_acl_from_llxconfig(TEACHERS_SHARE)
+	apply_acls(info,TEACHERS_SHARE)
+
+#def fix_share
+
+def fix_easy_sites():
+	print("[*] Fixing %s ..."%EASY_SITES)
+	#info=get_acl_info(EASY_SITES)
+	info=get_acl_from_llxconfig(EASY_SITES)
+	apply_acls(info,EASY_SITES)
+
+#def fix_share
+
+def fix_jclic_aula():
+	print("[*] Fixing %s ..."%JCLIC_AULA)
+	#info=get_acl_info(JCLIC_AULA)
+	info=get_acl_from_llxconfig(JCLIC_AULA)
+	apply_acls(info,JCLIC_AULA)
+
+#def fix_share
+
+def fix_all():
+	
+	fix_students()
+	fix_teachers()
+	fix_easy_sites()
+	fix_share()
+	fix_teachers_share()
+	fix_jclic_aula()
+	
+#def fix_all
+
+
+def usage():
+
+	print("USAGE:")
+	print("\tllx-netacl-fixer {base-dirs|students|teachers|share|teachers-share|easy-sites|jclic-aula|all}")
+	print("")
+	sys.exit(0)
+	
+	
+def warning():
+	
+	print("\n\t[!] THIS MIGHT TAKE A WHILE [!]\n")
+
+def done():
+	
+	print("\n\tDONE\n")
+	sys.exit(0)
+
+if __name__=="__main__":
+	
+	if len(sys.argv)<2:
+		usage()
+		
+	
+	help=["-h","--help","help"]
+	
+	if sys.argv[1] in help:
+		usage()
+	if sys.argv[1]=="students":
+		warning()
+		fix_students()
+		done()
+	if sys.argv[1]=="teachers":
+		warning()
+		fix_teachers()
+		done()
+	if sys.argv[1]=="share":
+		warning()
+		fix_share()
+		done()
+	if sys.argv[1]=="easy-sites":
+		warning()
+		fix_easy_sites()
+		done()
+	if sys.argv[1]=="teachers-share":
+		warning()
+		fix_teachers_share()
+		done()
+	if sys.argv[1]=="jclic-aula":
+		warning()
+		fix_jclic_aula()
+		done()
+	
+	if sys.argv[1]=="base-dirs":
+		warning()
+		os.system("service n4d restart")
+		done()
+	
+	if sys.argv[1]=="all":
+		warning()
+		fix_all()
+		os.system("service n4d restart")
+		done()
+		
+	usage()
+

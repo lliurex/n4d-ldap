@@ -1,0 +1,20 @@
+dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 254 ldap://10.3.0.254:389
+olcServerID: 1 ldap://10.3.0.1:389
+olcServerID: 2 ldap://10.3.0.2:389
+olcServerID: 3 ldap://10.3.0.3:389
+olcServerID: 4 ldap://10.3.0.4:389
+olcServerID: 5 ldap://10.3.0.5:389
+-
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: lliurex
+-
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: {1}syncprov.la
+-

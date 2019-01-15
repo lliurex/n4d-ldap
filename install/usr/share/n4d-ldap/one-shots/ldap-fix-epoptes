@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+import xmlrpclib
+import ldap
+import grp
+
+def get_ldap_pass():
+
+	try:
+		f=open("/etc/lliurex-secrets/passgen/ldap.secret")
+		lines=f.readlines()
+		f.close()
+		password=lines[0].replace("\n","")
+		return password
+	except:
+		return None
+		
+
+
+def mod_ldap():
+	
+	c=xmlrpclib.ServerProxy("https://localhost:9779")
+	base_dn=c.get_variable("","VariablesManager","LDAP_BASE_DN")
+	url=c.get_variable("","VariablesManager","CLIENT_LDAP_URI")
+	path="cn=epoptes,ou=System,ou=Groups," + base_dn
+	adm_path="cn=admin,"+base_dn	
+	password=get_ldap_pass()
+	ldp=ldap.initialize(url)
+	ldp.bind_s(adm_path,password)
+	a=ldp.search_s(path,ldap.SCOPE_SUBTREE)
+	
+	mod=( ldap.MOD_REPLACE, 'gidNumber', str(312) )
+			
+	mod_list=[]
+	mod_list.append(mod)
+	ldp.modify_s(path,mod_list)
+	
+#def mod_ldap
+
+
+try:
+	mod_ldap()
+	
+except Exception as e:
+	pass

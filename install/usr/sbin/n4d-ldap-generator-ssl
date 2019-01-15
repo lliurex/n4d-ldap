@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Licensed under GPL v3 or higher
+#
+
+if [ -e /etc/ldap/ssl/slapd.key ]; then
+	rm -rf /etc/ldap/ssl/slapd.key
+fi
+
+if [ -e /etc/ldap/ssl/slapd.cert ]; then
+        rm -rf /etc/ldap/ssl/slapd.cert
+fi
+
+kill -9 $(cat /var/run/rngd.pid) 2> /dev/null || true
+r=$[ ( $RANDOM % 10 ) + 1 ]
+rngd -r /dev/urandom -s $r
+echo $r
+[ -d /etc/ldap/ssl ] || mkdir -p /etc/ldap/ssl || true 
+openssl req -new -newkey rsa:4096 -days 30000 -nodes -x509 -subj "/C=ES/ST=VALENCIA/L=LliureX/O=server/CN=$(hostname)" -keyout /etc/ldap/ssl/slapd.key  -out /etc/ldap/ssl/slapd.cert
+kill -9 $(cat /var/run/rngd.pid)
+
+chown openldap:openldap /etc/ldap/ssl/slapd.key /etc/ldap/ssl/slapd.cert

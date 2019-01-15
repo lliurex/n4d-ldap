@@ -1,0 +1,13 @@
+[Unit]
+Description=SLAPD Daemon
+Wants=network-online.target
+After=network-online.target
+Before=nslcd.service n4d.service
+
+[Service]
+User=root
+Type=forking
+ExecStart=/usr/sbin/slapd-daemon-starter start
+
+[Install]
+WantedBy=multi-user.target

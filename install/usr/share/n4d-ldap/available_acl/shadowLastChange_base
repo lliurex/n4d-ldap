@@ -1,0 +1,1 @@
+to attrs=shadowLastChange by dn="cn=admin,{{ LDAP_BASE_DN }}" write by self write by anonymous auth by * none

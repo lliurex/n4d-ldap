@@ -1,0 +1,20 @@
+{
+	'olcDatabase={1}mdb,cn=config':
+	{
+		'olcRootDN': ['cn=admin,{{ LDAP_BASE_DN }}'],
+		'olcDatabase': ['{1}mdb'],
+		'olcRootPW': ['{{ PASSWORD_CRYPTED }}'],
+		'objectClass': ['olcDatabaseConfig', 'olcMdbConfig'],
+		'olcSuffix': ['{{ LDAP_BASE_DN }}'],
+		'olcDbCheckpoint': ['512 30'],
+		'olcDbIndex': ['objectClass eq', 'uidNumber eq', 'gidNumber eq', 'loginShell eq', 'uid eq,pres,sub', 'memberUid eq,pres,sub', 'uniqueMember eq,pres', 'default sub', 'cn eq', 'member eq'],
+		'olcLastMod': ['TRUE'],
+		'olcDbDirectory': ['/var/lib/ldap'],
+		'olcAccess':[
+					'to attrs=userPassword,shadowLastChange by self write by anonymous auth by dn="cn=admin,{{ LDAP_BASE_DN }}" write by * none',
+					'to dn.base="" by * read',
+					'to * by self write by dn="cn=admin,{{ LDAP_BASE_DN }}" write by * read'
+		]
+	}
+}
+
