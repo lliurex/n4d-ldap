@@ -422,6 +422,24 @@ class SlapdManager:
 		password_file.write(admin_password+"\n")
 		password_file.close()
 		os.chmod(self.LDAP_SECRET2,0600)
+		
+		
+		#set bigger db size
+		
+		modify_list = [(ldap.MOD_DELETE, 'olcDbMaxSize', None)]
+		try:
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+		except Exception as e:
+			# ignore this exception.
+			pass
+			
+		modify_list = [(ldap.MOD_ADD, 'olcDbMaxSize', "209715200")]
+		try:
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+		except Exception as e:
+			return {"status":False,"msg":e[0]["desc"]}
+
+		
 		return {"status":True,"msg":"OpenLdap is configured as simple ldap. Admin password is inside " + self.LDAP_SECRET2}
 
 	#def configure_simple_slapd
