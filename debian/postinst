@@ -67,7 +67,7 @@ case "$1" in
 		fi
 	fi
 	
-	if dpkg --compare-versions "$2" lt 0.51.2; then
+	if dpkg --compare-versions "$2" lt 0.51.3; then
 		cp /usr/share/n4d-ldap/one-shots/fix-replication-interface /etc/n4d/one-shot/
 		deb-systemd-invoke restart n4d || true
 	fi

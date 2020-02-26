@@ -1,4 +1,4 @@
-n4d-ldap (0.51.2) bionic; urgency=medium
+n4d-ldap (0.51.3) bionic; urgency=medium
 
   * Fix REPLICATION_INTERFACE has been initialized wrongly
 
