@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+
+import xmlrpc.client as x
+import yaml
+import ssl
+import os
+import sys
+def get_root_password():
+
+	if os.path.exists('/etc/n4d/key'):
+		with open('/etc/n4d/key','r') as fd:
+			key = fd.readline().strip()
+			return key
+	return None
+
+def run():
+	
+	c = x.ServerProxy("https://localhost:9779",context=ssl._create_unverified_context())
+	
+	replication_interface = c.get_variable("","VariablesManager","REPLICATION_INTERFACE")
+	if replication_interface is None:
+		sys.exit()
+
+	real_replication_interface = c.get_variable("","VariablesManager","CLIENT_LDAP_URI")
+		
+	
+#def mod_ldap
+
+if __name__ == "__main__":
+	run()
