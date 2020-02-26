@@ -17,7 +17,7 @@ def run():
 	
 	c = x.ServerProxy("https://localhost:9779",context=ssl._create_unverified_context())
 	
-	replication_interface = c.get_variable("","VariablesManager","REPLICATION_INTERFACE")
+	replication_interface = c.get_variable("","VariablesManager","INTERFACE_REPLICATION")
 	if replication_interface is None:
 		sys.exit()
 
@@ -31,7 +31,7 @@ def run():
 	if real_replication_interface is not None and real_replication_interface != replication_interface:
 		key = get_root_password()
 		if key is not None:
-			replication_interface = c.set_variable(key, "VariablesManager", "REPLICATION_INTERFACE", real_replication_interface)
+			replication_interface = c.set_variable(key, "VariablesManager", "INTERFACE_REPLICATION", real_replication_interface)
 
 #def mod_ldap
 
