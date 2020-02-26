@@ -21,9 +21,18 @@ def run():
 	if replication_interface is None:
 		sys.exit()
 
-	real_replication_interface = c.get_variable("","VariablesManager","CLIENT_LDAP_URI")
-		
+	if not os.path.exists('/etc/netplan/30-replication-lliurex.yaml'):
+		sys.exit()
+
+	with open('/etc/netplan/30-replication-lliurex.yaml') as fd:
+  		content = yaml.load(fd)
+  		real_replication_interface = list(content['network']['ethernets'].keys())[0]
 	
+	if real_replication_interface is not None and real_replication_interface != replication_interface:
+		key = get_root_password()
+		if key is not None:
+			replication_interface = c.set_variable(key, "VariablesManager", "REPLICATION_INTERFACE", real_replication_interface)
+
 #def mod_ldap
 
 if __name__ == "__main__":
