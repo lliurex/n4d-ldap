@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+
+import xmlrpc.client as x
+import yaml
+import ssl
+import os
+import sys
+def get_root_password():
+
+	if os.path.exists('/etc/n4d/key'):
+		with open('/etc/n4d/key','r') as fd:
+			key = fd.readline().strip()
+			return key
+	return None
+
+def run():
+	
+	c = x.ServerProxy("https://localhost:9779",context=ssl._create_unverified_context())
+	
+	replication_interface = c.get_variable("","VariablesManager","REPLICATION_INTERFACE")
+	if replication_interface is None:
+		sys.exit()
+
+	if not os.path.exists('/etc/netplan/30-replication-lliurex.yaml'):
+		sys.exit()
+
+	with open('/etc/netplan/30-replication-lliurex.yaml') as fd:
+  		content = yaml.load(fd)
+  		real_replication_interface = list(content['network']['ethernets'].keys())[0]
+	
+	if real_replication_interface is not None and real_replication_interface != replication_interface:
+		key = get_root_password()
+		if key is not None:
+			replication_interface = c.set_variable(key, "VariablesManager", "REPLICATION_INTERFACE", real_replication_interface)
+
+#def mod_ldap
+
+if __name__ == "__main__":
+	run()
