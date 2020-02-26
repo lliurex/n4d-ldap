@@ -67,6 +67,21 @@ case "$1" in
 		fi
 	fi
 	
+	if dpkg --compare-versions "$2" lt 0.51; then
+		# Check if REPLICATION_INTERFACE is wrong
+		eval $(n4d-vars getvalues INTERFACE_REPLICATION)
+
+		REAL_REPLICATION_INTERFACE=$(python3 << END
+import yaml
+with open('/etc/netplan/30-replication-lliurex.yaml') as fd:
+  content = yaml.load(fd)
+  print(list(content['network']['ethernets'].keys())[0])
+END
+		)
+		if [ "$INTERFACE_REPLICATION" != "$REAL_REPLICATION_INTERFACE" ]; then
+			n4d-vars setvalue $REAL_REPLICATION_INTERFACE
+		fi
+	fi
 
 	if [ -e "$ORIGINAL_FILE" ]; then
 
