@@ -531,8 +531,7 @@ class SlapdManager:
 	
 	
 	def set_replicate_interface(self, interface ):
-		objects['VariablesManager'].init_variable("INTERFACE_REPLICATION",{"INTERFACE_REPLICATION":interface})
-		return {"status":True,"msg":"Interface " + str(interface) + " is replication interface now"}
+		return objects['NetworkManager'].set_replicate_interface(interface)
 	#def set_replicate_interface
 
 	@try_connect	
