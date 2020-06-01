@@ -1,3 +1,9 @@
+n4d-ldap (0.52) bionic; urgency=medium
+
+  * move code to set replica interface to n4d-network plugin
+
+ -- Raul Rodrigo Segura <raurodse@gmail.com>  Mon, 01 Jun 2020 15:17:30 +0200
+
 n4d-ldap (0.51.3) bionic; urgency=medium
 
   * Fix REPLICATION_INTERFACE has been initialized wrongly
