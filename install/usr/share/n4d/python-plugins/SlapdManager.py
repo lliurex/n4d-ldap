@@ -15,6 +15,9 @@ import subprocess
 import tempfile
 import shutil
 
+__DEBUGGING__=False
+__DEBUG_PRINT__=False
+
 def try_connect(f):
 	def wrap(*args,**kw):
 		if not args[0].test_ldapi_connection():
@@ -24,6 +27,47 @@ def try_connect(f):
 	return wrap
 #def __try_connect__
 
+if __DEBUGGING__:
+	__TEMPLATES_SLAPD_PATH__='/home/lliurex/git/n4d-ldap/install/usr/share/n4d/templates/slapd'
+	def n4d_mv(o,d):
+		shutil.copy2(o,d)
+	class FakeObject:
+		def __init__(self):
+			self.o = {'LDAP_BASE_DN':'dc=ma5,dc=lliurex,dc=net'}
+		def p(self,*args):
+			if __DEBUG_PRINT__:
+				import inspect
+				l = ['*****']
+				l.append(inspect.stack()[1][3])
+				for x in args:
+					l.append('{}'.format(x))
+				l.append('*****')
+				print(' '.join(l))
+		def init_variable(self,name,value=''):
+			self.p(name,value)
+			self.o['name']=value
+		def get_variable_list(self,lista):
+			self.p(lista)
+			r={}
+			for x in lista:
+				r[x]=self.get_variable(x)
+			self.p('RESULT',r)
+			return r
+		def get_variable(self,name):
+			self.p(name)
+			if name not in self.o.keys():
+				self.p('UNKNOWN',name)
+				import sys
+				sys.exit(1)
+			else:
+				self.p('RESULT',self.o[name])
+				return self.o[name]
+		def set_variable(self,name,value):
+			self.p('SET VARIABLE',name,value)
+			if name in self.o:
+				self.o[name]=value
+
+	objects={'VariablesManager': FakeObject()}
 
 class SlapdManager:
 	
@@ -35,7 +79,16 @@ class SlapdManager:
 		self.LDAP_SECRET2 = '/etc/lliurex-secrets/passgen/ldap.secret'
 		self.log_path = '/var/log/n4d/sldap'
 		self.enable_acl_path = '/var/lib/n4d-ldap/enable_acl'
-		self.tpl_env = Environment(loader=FileSystemLoader('/usr/share/n4d/templates/slapd'))
+		if not __DEBUGGING__:
+			self.tpl_env = Environment(loader=FileSystemLoader('/usr/share/n4d/templates/slapd'))
+		else:
+			try:
+				__TEMPLATES_SLAPD_PATH__
+				self.tpl_env = Environment(loader=FileSystemLoader(__TEMPLATES_SLAPD_PATH__))
+			except:
+				print('NEED TO SET __TEMPLATES_SLAPD_PATH__ Example: /home/lliurex/git/n4d-ldap/install/usr/share/n4d/templates/slapd')
+				import sys
+				sys.exit(1)
 	#def __init__
 	
 	def apt(self):
@@ -134,11 +187,11 @@ class SlapdManager:
 		modify_list = [(ldap.MOD_ADD,'olcAccess',list_acl)]
 
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',remove_acl)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(remove_acl))
 		except:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"Acl updated"}
@@ -161,7 +214,7 @@ class SlapdManager:
 			old_config['objectClass'] = schema['objectClass']
 			changes = ldap.modlist.modifyModlist(old_config,schema)
 			try:
-				self.connect_ldapi.modify_s(old_cn,changes)
+				self.connect_ldapi.modify_s(old_cn,self.str_to_bytes(changes))
 				return {"status":True,"msg":"Schema " + str(cn) +"is updated"}
 			except Exception as e:
 				return {"status":False,"msg":str(e)}
@@ -213,27 +266,52 @@ class SlapdManager:
 		remove_acl = [(ldap.MOD_DELETE,'olcDbIndex',[""])]
 		modify_list = [(ldap.MOD_REPLACE,'olcDbIndex',list_index)]
 		try:
-			self.connect_ldapi.modify_s(cn,remove_acl)
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes(remove_acl))
 		except Exception as e:		
 			pass
 		try:
-			self.connect_ldapi.modify_s(cn,modify_list)
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes(modify_list))
 		except Exception as e:
-			self.connect_ldapi.modify_s(cn,[(ldap.MOD_ADD,'olcDbIndex',old_Index)])
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes([(ldap.MOD_ADD,'olcDbIndex',old_Index)]))
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"Index added"}
 	#def load_index
+	
+	def str_to_bytes(self,thing,skip=1):
+		if isinstance(thing,list):
+			thing_encoded = list()
+			for other in thing:
+				thing_encoded.append(self.str_to_bytes(other))
+			return thing_encoded
+		elif isinstance(thing,dict):
+			thing_encoded = dict()
+			for k,v in thing.items():
+				thing_encoded[k]=self.str_to_bytes(v)
+			return thing_encoded
+		elif isinstance(thing,tuple):
+			tmp_encoded=tuple()
+			for t in thing:
+				if skip > 0 and isinstance(t,str):
+					skip -= 1
+					tmp_encoded += (t,)
+				else:
+					tmp_encoded += (self.str_to_bytes(t),)
+			return tmp_encoded
+		elif isinstance(thing,str):
+			return thing.encode('utf-8')
+		else:
+			return thing
 	
 	def load_lliurex_schema(self):
 		#Load template
 		template = self.tpl_env.get_template("configure/lliurex_schema")
 		
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render().encode('UTF-8')
+		string_template = template.render()
 		aux_dic = ast.literal_eval(string_template)
-		# Update changes in ldap 
+		# Update changes in ldap
 		for x in aux_dic.keys():
-			result = self.load_schema(x,aux_dic[x],True)
+			result = self.load_schema(x,self.str_to_bytes(aux_dic[x]),True)
 			if not result['status']:
 				return result
 		return {"status":True,"msg":"Loaded Lliurex schema"}	
@@ -253,7 +331,7 @@ class SlapdManager:
 		environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
 		
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render(environment_vars).encode("UTF-8")
+		string_template = template.render(environment_vars)
 		aux_dic = ast.literal_eval(string_template)
 		
 		#Load basic strucutre
@@ -275,7 +353,7 @@ class SlapdManager:
 		if not type(dictionary) == type({}):
 			return {"status":False,"msg":"argument isn't python dictionary "}
 		dictionary_keys = dictionary.keys()
-		dictionary_keys.sort(lambda a,b: self.__dncmp__(a,b))
+		dictionary_keys = sorted(dictionary_keys,key=lambda x: len(x.split(',')))
 		aux_msg = ""
 		for x in dictionary_keys:
 			try:
@@ -323,14 +401,14 @@ class SlapdManager:
 		
 		# Remove old password and add new password . 1 = delete, 0 = add
 		remove_tls = [(ldap.MOD_DELETE,'olcTLSCertificateFile',None),(ldap.MOD_DELETE,'olcTLSCertificateKeyFile',None),(ldap.MOD_DELETE,'olcTLSVerifyClient',None)]
-		modify_list = [(ldap.MOD_ADD,'olcTLSCertificateFile',str(cert_path)),(ldap.MOD_ADD,'olcTLSCertificateKeyFile',str(key_path)),(ldap.MOD_ADD,'olcTLSVerifyClient','never')]
+		modify_list = [(ldap.MOD_ADD,'olcTLSCertificateFile',cert_path),(ldap.MOD_ADD,'olcTLSCertificateKeyFile',key_path),(ldap.MOD_ADD,'olcTLSVerifyClient','never')]
 
 		try:
-			self.connect_ldapi.modify_s('cn=config',remove_tls)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(remove_tls))
 		except:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_list)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		
@@ -348,7 +426,7 @@ class SlapdManager:
 		# Remove old password and add new password . 1 = delete, 0 = add
 		modify_list = [(ldap.MOD_DELETE, 'olcRootPW', None), (ldap.MOD_ADD, 'olcRootPW', ssha_password)]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return {"status":False,"msg":e[0]["desc"]}
 		
@@ -363,10 +441,13 @@ class SlapdManager:
 		password_file = open(self.LDAP_SECRET2,'w')
 		password_file.write(password+"\n")
 		password_file.close()
-		os.chmod(self.LDAP_SECRET2,0600)
+		os.chmod(self.LDAP_SECRET2,0o0600)
 		return {"status":True,"msg":"Ldap admin password updated"}
 	#def change_admin_passwd
-
+	def remove_wrong_operations(self,changelist):
+		wrongkeys = [ 'olcDatabase', 'objectClass', 'olcDbDirectory' ]
+		return [ (op,key,value) for op,key,value in changelist if key not in wrongkeys ]
+			
 	@try_connect	
 	def configure_simple_slapd(self,admin_password=None):
 		"""
@@ -386,7 +467,7 @@ class SlapdManager:
 		environment_vars['PASSWORD_CRYPTED'] = ssha_password.strip()
 		
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render(environment_vars).encode('UTF-8')
+		string_template = template.render(environment_vars)
 		aux_dic = ast.literal_eval(string_template)
 		
 		# Update changes in ldap 
@@ -395,15 +476,15 @@ class SlapdManager:
 			if len(old_config) > 0:
 				old_config = old_config[0][1]
 			changes = ldap.modlist.modifyModlist(old_config,aux_dic[x])
+			changes = self.remove_wrong_operations(changes)
 			try:
-				self.connect_ldapi.modify_s(x,changes)
+				self.connect_ldapi.modify_s(x,self.str_to_bytes(changes))
 			except Exception as e:
 				return {"status":False,"msg":e[0]["desc"]}
 		
-		
 		modify_list = [(ldap.MOD_ADD, 'olcSizeLimit', 'unlimited')]
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_list)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return {"status":False,"msg":e[0]["desc"]}
 
@@ -421,21 +502,21 @@ class SlapdManager:
 		password_file = open(self.LDAP_SECRET2,'w')
 		password_file.write(admin_password+"\n")
 		password_file.close()
-		os.chmod(self.LDAP_SECRET2,0600)
+		os.chmod(self.LDAP_SECRET2,0o0600)
 		
 		
 		#set bigger db size
 		
 		modify_list = [(ldap.MOD_DELETE, 'olcDbMaxSize', None)]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			# ignore this exception.
 			pass
 			
 		modify_list = [(ldap.MOD_ADD, 'olcDbMaxSize', "209715200")]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return {"status":False,"msg":e[0]["desc"]}
 
@@ -543,11 +624,11 @@ class SlapdManager:
 		modify_olcserver = [(ldap.MOD_ADD,'olcServerID',list_ip)]
 		objects['VariablesManager'].init_variable('LDAP_SID',{"SID":id_server})
 		try:
-			self.connect_ldapi.modify_s('cn=config',remove_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(remove_olcserver))
 		except:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status": True, "msg":"This server now has ServerID " + str(id_server) + " on ldap"}
@@ -584,7 +665,7 @@ class SlapdManager:
 		modify_olcserver = [(ldap.MOD_ADD,'olcServerID',list_ip)]
 
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":ip + " has been appended"}
@@ -601,7 +682,7 @@ class SlapdManager:
 		else:
 			return {"status":False,"msg":"server hasn't server ID key"}
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"Server with ip " + ip + " has been delete"}
@@ -616,7 +697,7 @@ class SlapdManager:
 		else:
 			modify_olcserver.append((ldap.MOD_ADD,'olcServerID',list_serverid))
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"OlcServerId is updated"}
@@ -626,7 +707,7 @@ class SlapdManager:
 	@try_connect
 	def enable_module(self, name):
 		try:
-			self.connect_ldapi.modify_s('cn=module{0},cn=config',[(ldap.MOD_ADD,'olcModuleLoad',name)])
+			self.connect_ldapi.modify_s('cn=module{0},cn=config',self.str_to_bytes([(ldap.MOD_ADD,'olcModuleLoad',name)]))
 		except Exception as e:
 			return {'status':False,'msg':str(e)}
 		return {'status':True,'msg': 'module' + str(name) + ' has been enabled' }
@@ -655,7 +736,7 @@ class SlapdManager:
 				changes = [(ldap.MOD_ADD,'olcRootPW',password)]
 			else:
 				changes = [(ldap.MOD_REPLACE,'olcRootPW',password)]
-			self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',changes)
+			self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',self.str_to_bytes(changes))
 		except Exception as e:
 			return {"status":False,"msg" : str(e)}
 		return {"status": True, "msg" : "Password is set"}
@@ -665,7 +746,7 @@ class SlapdManager:
 	def delete_password_config(self):
 		try:
 			changes = [(ldap.MOD_DELETE,'olcRootPW')]
-			password = self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',changes)
+			password = self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',self.str_to_bytes(changes))
 		except Exception as e:
 			return {"status":False,"msg":"Password is not defined"}
 		return {"status":True,"msg":"Removed password from database config"}
@@ -733,7 +814,7 @@ class SlapdManager:
 			changes.insert(0,(ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password)}))
 			
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
 				return {"status":False,"msg":str(e)}
 
@@ -754,11 +835,11 @@ class SlapdManager:
 		delete_chages = [(ldap.MOD_DELETE,'olcSyncrepl')]
 		new_changes = [(ldap.MOD_ADD,'olcSyncrepl',list_rid)]
 		try:
-			self.connect_ldapi.modify_s(dn,delete_chages)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(delete_chages))
 		except Exception as e:
 			pass
 		try:
-			self.connect_ldapi.modify_s(dn,new_changes)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(new_changes))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"set news rids"}
@@ -777,7 +858,7 @@ class SlapdManager:
 	def backup_config(self, path):
 		os.system("slapcat -n 0 >> " + str(path))
 		prevmask = os.umask(0)
-		os.chmod(path,0600)
+		os.chmod(path,0o0600)
 		os.umask(prevmask)
 		return {"status":True,"msg":"Backup created on " + str(path)}
 	#def backup_config
@@ -831,7 +912,7 @@ class SlapdManager:
 					changes.append((ldap.MOD_ADD,'olcMirrorMode','TRUE'))
 
 			try:
-					self.connect_ldapi.modify_s(dn,changes)
+					self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
 					return {"status":False,"msg":str(e)}
 
@@ -909,7 +990,7 @@ class SlapdManager:
 	#def get_ldap_password
 	
 	def active_data_replication(self):
-		temp_dn = "".join(random.sample(string.letters,10))
+		temp_dn = "".join(random.sample(string.ascii_letters,10))
 		base_dn = objects["VariablesManager"].get_variable("LDAP_BASE_DN")
 		if base_dn == None:
 			return {"status":False,"msg":"LDAP_BASE_DN is not defined"}
@@ -926,11 +1007,11 @@ class SlapdManager:
 		delete_chages = [(ldap.MOD_DELETE,'olcSpCheckpoint')]
 		new_changes = [(ldap.MOD_ADD,'olcSpCheckpoint',str(num_changes)+ " " + str(minutes))]
 		try:
-			self.connect_ldapi.modify_s(dn,delete_chages)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(delete_chages))
 		except Exception as e:
 			pass
 		try:
-			self.connect_ldapi.modify_s(dn,new_changes)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(new_changes))
 		except Exception as e:
 			return {"status":False,"msg":str(e)}
 		return {"status":True,"msg":"set checkpoint"}
@@ -951,7 +1032,7 @@ class SlapdManager:
 			changes = []
 			changes.append((ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password),'rootdn':str(rootdn),'basedn':str(basedn)}))
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
 				return {"status":False,"msg":str(e)}
 		except Exception as e:
@@ -966,7 +1047,7 @@ class SlapdManager:
 			changes = []
 			changes.append((ldap.MOD_ADD,'olcUpdateRef','ldaps://'+str(ip)))
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
 				return {"status":False,"msg":str(e)}
 		except Exception as e:
@@ -1025,11 +1106,11 @@ class SlapdManager:
 			return 1
 	#def __becmp
 	
-	@staticmethod
-	def __dncmp__(x,y):
-		aux_x = x.split(',')
-		aux_y = y.split(',')
-		return cmp(len(aux_x),len(aux_y))
+	#@staticmethod
+	#def __dncmp__(x,y):
+	#	aux_x = x.split(',')
+	#	aux_y = y.split(',')
+	#	return cmp(len(aux_x),len(aux_y))
 	#def __dncmp__
 	
 	def test_ldapi_connection(self):
@@ -1043,7 +1124,7 @@ class SlapdManager:
 	def connection_ldapi(self):
 		self.auth=ldap.sasl.sasl('','EXTERNAL')
 		try:
-			self.connect_ldapi=ldap.initialize('ldapi:///',trace_level=0)
+			self.connect_ldapi=ldap.initialize('ldapi:///',trace_level=0,bytes_mode=False)
 			self.connect_ldapi.protocol_version=3
 			self.connect_ldapi.sasl_interactive_bind_s("",self.auth)
 			return True
@@ -1063,7 +1144,7 @@ class SlapdManager:
 
 	def connection_ldap(self):
 		try:
-			self.connect_ldap=ldap.initialize('ldap://localhost:389',trace_level=0)
+			self.connect_ldap=ldap.initialize('ldap://localhost:389',trace_level=0,bytes_mode=False)
 			self.connect_ldap.protocol_version=3
 			if os.path.exists(self.LDAP_SECRET1):
 				f=open(self.LDAP_SECRET1)
@@ -1086,7 +1167,7 @@ class SlapdManager:
 			return False
 
 	
-	def getsalt(self,chars = string.letters + string.digits,length=16):
+	def getsalt(self,chars = string.ascii_letters + string.digits,length=16):
 		salt = ""
 		for i in range(int(length)):
 			salt += random.choice(chars)
@@ -1094,15 +1175,25 @@ class SlapdManager:
 	#def getsalt
 
 	def generate_random_ssha_password(self):
-		password="".join(random.sample(string.letters+string.digits, 10))
+		password="".join(random.sample(string.ascii_letters+string.digits, 10))
 		return self.generate_ssha_password(password),password
 	#def generate_random_ssha_password
 
 	def generate_ssha_password(self,password):
-		salt=self.getsalt()
-		return "{SSHA}" + base64.encodestring(hashlib.sha1(str(password) + salt).digest() + salt)
+		salt=self.str_to_bytes(self.getsalt())
+		return "{SSHA}" + base64.encodebytes(hashlib.sha1(self.str_to_bytes(password) + salt).digest() + salt).decode('utf-8')
 	#def generate_ssha_password  	
 
 
 if __name__ == '__main__':
-	a = Slapd()
+	if __DEBUGGING__:
+		c = SlapdManager()
+		print(c.load_lliurex_schema())
+		print(c.enable_tls_communication('/etc/ldap/ssl/slapd.cert','/etc/ldap/ssl/slapd.key'))
+		print(c.configure_simple_slapd())
+		print(c.open_ports_slapd('10.0.2.254'))
+		print(c.reboot_slapd())
+		print(c.load_basic_struture())
+		print(c.change_admin_passwd('lliurex'))
+		# print(c.enable_folders())
+		print(c.clean_master_server_ip())

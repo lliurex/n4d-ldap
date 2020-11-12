@@ -1,3 +1,10 @@
+n4d-ldap (0.53) focal; urgency=medium
+
+  * Migration to Python3
+  * First focal release 
+
+ -- M.Angel Juan <m.angel.juan@gmail.com>  Thu, 12 Nov 2020 11:25:52 +0100
+
 n4d-ldap (0.52) bionic; urgency=medium
 
   * move code to set replica interface to n4d-network plugin
