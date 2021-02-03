@@ -10,7 +10,8 @@ Homepage: http://www.lliurex.net
 Package: n4d-ldap
 Architecture: all
 Pre-depends: n4d, lliurex-base-files (>= 13.06.16), slapd
-Depends: ${shlibs:Depends}, ${misc:Depends},  python3-ldap, ldap-utils, python3-jinja2, rng-tools, python-llxvars, python3, n4d-lliurex-base (>= 0.7), n4d-netfolders
+Depends: ${shlibs:Depends}, ${misc:Depends},  python3-ldap, ldap-utils, python3-jinja2, rng-tools, python3, n4d-server-plugins, n4d-network, n4d-netfolders
+# n4d-lliurex-base (>= 0.7),
 Description: N4D plugin for configuring ldap server
  This plugin configure ldap server with some templates
  
