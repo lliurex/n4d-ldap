@@ -1,0 +1,166 @@
+{
+	"SETUP":{
+		"type": "python",
+		"path": "SlapdManager.py",
+		"class": "SlapdManager"
+	},
+	"METHODS":
+	{
+ 		"test":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"backup":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "restore":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "reset_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "load_acl":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "load_schema":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "update_index":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "load_lliurex_schema":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "load_basic_struture":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"insert_dictionary":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_tls_communication":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "change_admin_passwd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "configure_simple_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "configure_master_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "configure_client_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "open_ports_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"reboot_slapd":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "generate_ssl_certificates":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_folders":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "disable_folders":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_replicate_interface":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_serverid":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_serverid":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"append_serverid":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "delete_serverid":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_serverid_batch":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_module":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_replication_module":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_password_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_password_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"delete_password_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_overlay_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_overlay_data":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "add_rid_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "remove_rid_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "add_rid_data":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "remove_rid_data":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"block_replication":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "unblock_replication":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_csn_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_csn_data":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_ldap_password":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "get_rid_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_rid_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+		"active_data_replication":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "backup_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "restore_backup_config":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "enable_syncprov_checkpoint":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "add_rid_data_simple_sync":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "add_updateref_data":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "set_master_server_ip":{
+			"allowed_groups": ["sudo","admin","admins"]
+		},
+        "clean_master_server_ip":{
+			"allowed_groups": ["sudo","admin","admins"]
+		}
+	}
+}

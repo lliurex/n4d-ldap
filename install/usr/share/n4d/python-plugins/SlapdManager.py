@@ -14,28 +14,91 @@ import hashlib
 import subprocess
 import tempfile
 import shutil
+from n4d.client import Client,Key,Credential
+from n4d.server.core import Core
+import n4d.responses
+from n4d.utils import n4d_mv
+import sys
+
+__DEBUGGING__=False
+__DEBUG_PRINT__=False
 
 def try_connect(f):
 	def wrap(*args,**kw):
 		if not args[0].test_ldapi_connection():
 			if not args[0].connection_ldapi():
-				return {"status":False,"msg":"Connection with ldapi is not created"}
+				return n4d.responses.build_failed_call_response(ret_msg="Connection with ldapi is not created")
+				#return {"status":False,"msg":"Connection with ldapi is not created"}
 		return f(*args)
 	return wrap
 #def __try_connect__
 
+if __DEBUGGING__:
+	__TEMPLATES_SLAPD_PATH__='/home/lliurex/git/n4d-ldap/install/usr/share/n4d/templates/slapd'
+	def n4d_mv(o,d):
+		shutil.copy2(o,d)
+	class FakeObject:
+		def __init__(self):
+			self.o = {'LDAP_BASE_DN':'dc=ma5,dc=lliurex,dc=net'}
+		def p(self,*args):
+			if __DEBUG_PRINT__:
+				import inspect
+				l = ['*****']
+				l.append(inspect.stack()[1][3])
+				for x in args:
+					l.append('{}'.format(x))
+				l.append('*****')
+				print(' '.join(l))
+		def init_variable(self,name,value=''):
+			self.p(name,value)
+			self.o['name']=value
+		def get_variable_list(self,lista):
+			self.p(lista)
+			r={}
+			for x in lista:
+				r[x]=self.get_variable(x)
+			self.p('RESULT',r)
+			return r
+		def get_variable(self,name):
+			self.p(name)
+			if name not in self.o.keys():
+				self.p('UNKNOWN',name)
+				import sys
+				sys.exit(1)
+			else:
+				self.p('RESULT',self.o[name])
+				return self.o[name]
+		def set_variable(self,name,value):
+			self.p('SET VARIABLE',name,value)
+			if name in self.o:
+				self.o[name]=value
+
+	objects={'VariablesManager': FakeObject()}
 
 class SlapdManager:
 	
-	predepends = ['VariablesManager']
-	
 	def __init__(self):
+		
+		self.mkey = Key.master_key()
+		if not self.mkey.valid():
+			raise Exception('Fail to get master key')
+		self.client = Client(key=self.mkey)
+		self.n4d = Core.get_core()
+
 		# Vars
 		self.LDAP_SECRET1 = '/etc/lliurex-cap-secrets/ldap-master/ldap'
 		self.LDAP_SECRET2 = '/etc/lliurex-secrets/passgen/ldap.secret'
 		self.log_path = '/var/log/n4d/sldap'
 		self.enable_acl_path = '/var/lib/n4d-ldap/enable_acl'
-		self.tpl_env = Environment(loader=FileSystemLoader('/usr/share/n4d/templates/slapd'))
+		if not __DEBUGGING__:
+			self.tpl_env = Environment(loader=FileSystemLoader('/usr/share/n4d/templates/slapd'))
+		else:
+			try:
+				__TEMPLATES_SLAPD_PATH__
+				self.tpl_env = Environment(loader=FileSystemLoader(__TEMPLATES_SLAPD_PATH__))
+			except:
+				print('NEED TO SET __TEMPLATES_SLAPD_PATH__ Example: /home/lliurex/git/n4d-ldap/install/usr/share/n4d/templates/slapd')
+				sys.exit(1)
 	#def __init__
 	
 	def apt(self):
@@ -50,8 +113,12 @@ class SlapdManager:
 	#def apt
 	
 	def startup(self,options):
-		if objects['VariablesManager'].get_variable('LDAP_BASE_DN') is None:
-			objects['VariablesManager'].init_variable('LDAP_BASE_DN')
+		try:
+			dn = self.n4d.get_variable('LDAP_BASE_DN').get('return')
+			if not dn:
+				self.n4d.set_variable('LDAP_BASE_DN','dc=ma5,dc=lliurex,dc=net')
+		except Exception as e:
+			raise Exception("Could't initialize LDAP_BASE_DN, {}".format(e))
 		self.connection_ldapi()
 		self.connection_ldap()
 	#def startup
@@ -66,10 +133,13 @@ class SlapdManager:
 				folder_path+="/"
 			file_path = folder_path + get_backup_name("Slapd")
 			os.system("llx-slapd-backup dump " + file_path)
-			objects["Golem"].ldap.restore_connection=True
-			objects["Golem"].ldap.connect()
-			return [True,file_path]
-			
+			golem = self.n4d.get_plugin('Golem')
+			if golem:
+				golem.ldap.restore_connection=True
+				golem.ldap.connect()
+				return [True,file_path]
+			else:
+				return [False,None]
 		except Exception as e:
 			return [False,str(e)]
 		
@@ -81,23 +151,18 @@ class SlapdManager:
 				if "Slapd" in f:
 					file_path="/backup/"+f
 					break
-
 		try:
-
 			if os.path.exists(file_path):
-				
 				os.system("llx-slapd-backup restore " + file_path)
-						
 				return [True,""]
-				
 		except Exception as e:
-				
 			return [False,str(e)]
 	#def restore
 	
 	def reset_slapd(self):
 		proc = subprocess.Popen(['/usr/sbin/reset-slapd'],stdout=subprocess.PIPE,stdin=subprocess.PIPE).communicate()
-		return {"status":True,"msg":"Server is reset"}
+		return n4d.responses.build_successful_call_response(ret_msg="Server is reset")
+		#return {"status":True,"msg":"Server is reset"}
 	#def reset_slapd
 
 	@try_connect
@@ -112,7 +177,13 @@ class SlapdManager:
 		list_files_acl.sort(lambda x,y:self.__becmp__(self.__beint__(x),self.__beint__(y)))
 		
 		# Prepare environment
-		environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
+		try:
+			environment_vars = self.n4d.get_variable_list(['LDAP_BASE_DN']).get('return')
+			if not environment_vars:
+				raise Exception("Couldn't get LDAP_BASE_DN")
+		except Exception as e:
+			raise(e)
+		
 		list_acl = []
 		
 		# Number for ACL
@@ -134,19 +205,20 @@ class SlapdManager:
 		modify_list = [(ldap.MOD_ADD,'olcAccess',list_acl)]
 
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',remove_acl)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(remove_acl))
 		except:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Acl updated"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Acl updated")
+		#return {"status":True,"msg":"Acl updated"}
 	#def load_acl
 	
 	@try_connect	
 	def load_schema(self,cn,schema,update=False):
-		
 		all_schemas = self.connect_ldapi.search_s('cn=schema,cn=config',ldap.SCOPE_SUBTREE)
 		old_config = None
 		for i in all_schemas:
@@ -156,41 +228,48 @@ class SlapdManager:
 				break
 		if not old_config == None:
 			if not update:
-				return {"status":False,"msg":"Schema " + str(cn) + " already exist. You can update with update option on True"}
+				return n4d.responses.build_failed_call_response(ret_msg="Schema " + str(cn) + " already exist. You can update with update option on True")
+				#return {"status":False,"msg":"Schema " + str(cn) + " already exist. You can update with update option on True"}
 			old_config['cn'] = schema['cn']
 			old_config['objectClass'] = schema['objectClass']
-			changes = ldap.modlist.modifyModlist(old_config,schema)
+			# not tested, but try to ensure bytes format on both sides for true differences
+			# changes = ldap.modlist.modifyModlist(old_config,schema)
+			changes = ldap.modlist.modifyModlist(self.str_to_bytes(old_config),self.str_to_bytes(schema))
 			try:
-				self.connect_ldapi.modify_s(old_cn,changes)
-				return {"status":True,"msg":"Schema " + str(cn) +"is updated"}
+				self.connect_ldapi.modify_s(old_cn,self.str_to_bytes(changes))
+				return n4d.responses.build_successful_call_response(ret_msg="Schema {} is updated".format(cn))
+				#return {"status":True,"msg":"Schema " + str(cn) +"is updated"}
 			except Exception as e:
-				return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":str(e)}
 		else:
 			changes = ldap.modlist.addModlist(schema)
 			try:
 				self.connect_ldapi.add_s(cn,changes)
-				return {"status":True,"msg":"Loaded schema" + str(cn)}
+				return n4d.responses.build_successful_call_response(ret_msg="Loaded schema {}".format(cn))
+				#return {"status":True,"msg":"Loaded schema" + str(cn)}
 			except Exception as e:
-				return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":str(e)}
 	#def load_schema
 	
 	@try_connect	
 	def update_index(self,index,add_index=True):
-	
 		searching_backend = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_SUBTREE,filterstr='(objectClass=olcBackendConfig)',attrlist=['olcBackend'])
 		if len(searching_backend) > 0 :
 			backend = searching_backend[0][1]['olcBackend'][0]
 		else:
-			return {"status":False,"msg":"not found backend for OpenLdap"}
+			return n4d.responses.build_failed_call_response(ret_msg="not found backend for OpenLdap")
+			#return {"status":False,"msg":"not found backend for OpenLdap"}
 
-		
 		searching_database = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_SUBTREE,filterstr='(olcDatabase~='+backend+')',attrlist=['olcDbIndex'])
 		if len(searching_database) > 0 :
 			cn,aux_index = searching_database[0]
 		else:
-			return {"status":False,"msg":"not found database config on OpenLdap"}
+			return n4d.responses.build_failed_call_response(ret_msg="not found database config on OpenLdap")
+			#return {"status":False,"msg":"not found database config on OpenLdap"}
 
-		if aux_index.has_key('olcDbIndex'):
+		if 'olcDbIndex' in aux_index:
 			old_Index = aux_index['olcDbIndex']
 		else:
 			old_Index = []
@@ -213,30 +292,58 @@ class SlapdManager:
 		remove_acl = [(ldap.MOD_DELETE,'olcDbIndex',[""])]
 		modify_list = [(ldap.MOD_REPLACE,'olcDbIndex',list_index)]
 		try:
-			self.connect_ldapi.modify_s(cn,remove_acl)
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes(remove_acl))
 		except Exception as e:		
 			pass
 		try:
-			self.connect_ldapi.modify_s(cn,modify_list)
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes(modify_list))
 		except Exception as e:
-			self.connect_ldapi.modify_s(cn,[(ldap.MOD_ADD,'olcDbIndex',old_Index)])
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Index added"}
+			self.connect_ldapi.modify_s(cn,self.str_to_bytes([(ldap.MOD_ADD,'olcDbIndex',old_Index)]))
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Index added")
+		#return {"status":True,"msg":"Index added"}
 	#def load_index
+	
+	def str_to_bytes(self,thing,skip=1):
+		if isinstance(thing,list):
+			thing_encoded = list()
+			for other in thing:
+				thing_encoded.append(self.str_to_bytes(other))
+			return thing_encoded
+		elif isinstance(thing,dict):
+			thing_encoded = dict()
+			for k,v in thing.items():
+				thing_encoded[k]=self.str_to_bytes(v)
+			return thing_encoded
+		elif isinstance(thing,tuple):
+			tmp_encoded=tuple()
+			for t in thing:
+				if skip > 0 and isinstance(t,str):
+					skip -= 1
+					tmp_encoded += (t,)
+				else:
+					tmp_encoded += (self.str_to_bytes(t),)
+			return tmp_encoded
+		elif isinstance(thing,str):
+			return thing.encode('utf-8')
+		else:
+			return thing
 	
 	def load_lliurex_schema(self):
 		#Load template
 		template = self.tpl_env.get_template("configure/lliurex_schema")
 		
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render().encode('UTF-8')
+		string_template = template.render()
 		aux_dic = ast.literal_eval(string_template)
-		# Update changes in ldap 
+		# Update changes in ldap
 		for x in aux_dic.keys():
-			result = self.load_schema(x,aux_dic[x],True)
-			if not result['status']:
+			result = self.load_schema(x,self.str_to_bytes(aux_dic[x]),True)
+			if result['status'] != 0:
 				return result
-		return {"status":True,"msg":"Loaded Lliurex schema"}	
+		return n4d.responses.build_successful_call_response(ret_msg="Loaded Lliurex schema")
+		#return {"status":True,"msg":"Loaded Lliurex schema"}	
 		
 	#def load_lliurex_schema
 
@@ -246,22 +353,30 @@ class SlapdManager:
 		"""
 		if not self.test_ldap_connection():
 			if not self.connection_ldap():
-				return {"status":False,"msg":"Connection with ldap is not created"}
+				return n4d.responses.build_failed_call_response(ret_msg="Connection with ldap is not created")
+				#return {"status":False,"msg":"Connection with ldap is not created"}
 		
 		#Prepare environment
 		template = self.tpl_env.get_template('struct/base')
-		environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
-		
+		try:
+			environment_vars = self.n4d.get_variable_list(['LDAP_BASE_DN']).get('return')
+			if not environment_vars:
+				raise Exception("Couldn't get LDAP_BASE_DN")
+		except Exception as e:
+			raise(e)
+
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render(environment_vars).encode("UTF-8")
+		string_template = template.render(environment_vars)
 		aux_dic = ast.literal_eval(string_template)
 		
 		#Load basic strucutre
 		result = self.insert_dictionary(aux_dic)
-		if result['status']:
-			return {"status":True,"msg":"Root structure created"} 
+		if result['status'] == 0:
+			return n4d.responses.build_successful_call_response(ret_msg="Root structure created")
+			#return {"status":True,"msg":"Root structure created"} 
 		else:
-			return {"status":True,"msg":"Root structure already exists"}
+			return n4d.responses.build_successful_call_response(ret_msg="Root structure already exists")
+			#return {"status":True,"msg":"Root structure already exists"}
 	#def load_basic_structure
 	
 	
@@ -270,12 +385,14 @@ class SlapdManager:
 		"""
 		if not self.test_ldap_connection():
 			if not self.connection_ldap():
-				return {"status":False,"msg":"Connection with ldap is not created"}
+				return n4d.responses.build_failed_call_response(ret_msg="Connection with ldap is not created")
+				#return {"status":False,"msg":"Connection with ldap is not created"}
 	
-		if not type(dictionary) == type({}):
-			return {"status":False,"msg":"argument isn't python dictionary "}
+		if not isinstance(dictionary,dict):
+			return n4d.responses.build_failed_call_response(ret_msg="argument isn't python dictionary")
+			#return {"status":False,"msg":"argument isn't python dictionary "}
 		dictionary_keys = dictionary.keys()
-		dictionary_keys.sort(lambda a,b: self.__dncmp__(a,b))
+		dictionary_keys = sorted(dictionary_keys,key=lambda x: len(x.split(',')))
 		aux_msg = ""
 		for x in dictionary_keys:
 			try:
@@ -284,23 +401,28 @@ class SlapdManager:
 			except ldap.ALREADY_EXISTS as e:
 				if i_existing:
 					aux_msg += "\nEntry " + str(x) + " has been omited because already exists"
-				else:					
-					return {"status":False ,"msg":"Entry " + str(x) + " already exists"}
+				else:
+					return n4d.responses.build_failed_call_response(ret_msg="Entry {} already exists".format(x))					
+					#return {"status":False ,"msg":"Entry " + str(x) + " already exists"}
 			except Exception as e:
-				return {"status":False ,"msg":"Entry " + str(x) + " isn't possible create because "+ str(e)}
-		return {"status":True,"msg":"All entry added" + aux_msg}
+				return n4d.responses.build_failed_call_response(ret_msg="Entry {} isn't possible create because {}".format(x,e))
+				#return {"status":False ,"msg":"Entry " + str(x) + " isn't possible create because "+ str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="All entry added {}".format(aux_msg))
+		#return {"status":True,"msg":"All entry added" + aux_msg}
 	#def insert_dictionary
-	
 	
 	def delete_dn(self, dn):
 		if not self.test_ldap_connection():
 			if not self.connection_ldap():
-				return {"status":False,"msg":"Connection with ldap is not created"}
+				return n4d.responses.build_failed_call_response(ret_msg="Connection with ldap is not created")
+				#return {"status":False,"msg":"Connection with ldap is not created"}
 		try:
 			self.connection_ldap.delete_s(dn)
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Deleted dn"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Deleted dn")
+		#return {"status":True,"msg":"Deleted dn"}
 	#def delete_dn
 	
 	def recursive_delete(self,dn):
@@ -312,7 +434,8 @@ class SlapdManager:
 			for x in result:
 				self.recursive_delete(x[0])
 		self.connect_ldap.delete_s(dn)
-		return {"status":True, "msg":"Deleted " + str(dn)}
+		return n4d.responses.build_successful_call_response(ret_msg="Deleted {}".format(dn))
+		#return {"status":True, "msg":"Deleted " + str(dn)}
 	#def recursive_delete
 
 	@try_connect	
@@ -320,22 +443,22 @@ class SlapdManager:
 		""" 
 			Enable ssl for connection
 		"""
-		
 		# Remove old password and add new password . 1 = delete, 0 = add
 		remove_tls = [(ldap.MOD_DELETE,'olcTLSCertificateFile',None),(ldap.MOD_DELETE,'olcTLSCertificateKeyFile',None),(ldap.MOD_DELETE,'olcTLSVerifyClient',None)]
-		modify_list = [(ldap.MOD_ADD,'olcTLSCertificateFile',str(cert_path)),(ldap.MOD_ADD,'olcTLSCertificateKeyFile',str(key_path)),(ldap.MOD_ADD,'olcTLSVerifyClient','never')]
+		modify_list = [(ldap.MOD_ADD,'olcTLSCertificateFile',cert_path),(ldap.MOD_ADD,'olcTLSCertificateKeyFile',key_path),(ldap.MOD_ADD,'olcTLSVerifyClient','never')]
 
 		try:
-			self.connect_ldapi.modify_s('cn=config',remove_tls)
-		except:		
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(remove_tls))
+		except Exception as e:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_list)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
 		self.connection_ldap()
-		return {"status":True,"msg":"SSL is Enabled"}
+		return n4d.responses.build_successful_call_response(ret_msg="SSL is Enabled")
+		#return {"status":True,"msg":"SSL is Enabled"}
 	#def enable_tls_communication
 
 	@try_connect	
@@ -348,13 +471,19 @@ class SlapdManager:
 		# Remove old password and add new password . 1 = delete, 0 = add
 		modify_list = [(ldap.MOD_DELETE, 'olcRootPW', None), (ldap.MOD_ADD, 'olcRootPW', ssha_password)]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
-			return {"status":False,"msg":e[0]["desc"]}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":e[0]["desc"]}
 		
 		#reconnect
 		try:
-			environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
+			try:
+				environment_vars = self.n4d.get_variable_list(['LDAP_BASE_DN']).get('return')
+				if not environment_vars:
+					raise Exception("Couldn't get LDAP_BASE_DN")
+			except Exception as e:
+				raise(e)
 			self.connect_ldap.bind_s("cn=admin,"+environment_vars['LDAP_BASE_DN'],password)
 		except:
 			self.connect_ldap = None
@@ -363,10 +492,15 @@ class SlapdManager:
 		password_file = open(self.LDAP_SECRET2,'w')
 		password_file.write(password+"\n")
 		password_file.close()
-		os.chmod(self.LDAP_SECRET2,0600)
-		return {"status":True,"msg":"Ldap admin password updated"}
+		os.chmod(self.LDAP_SECRET2,0o0600)
+		return n4d.responses.build_successful_call_response(ret_msg="Ldap admin password updated")
+		#return {"status":True,"msg":"Ldap admin password updated"}
 	#def change_admin_passwd
 
+	# def remove_wrong_operations(self,changelist):
+	# 	wrongkeys = [ 'olcDatabase', 'objectClass', 'olcDbDirectory' ]
+	# 	return [ (op,key,value) for op,key,value in changelist if key not in wrongkeys ]
+			
 	@try_connect	
 	def configure_simple_slapd(self,admin_password=None):
 		"""
@@ -376,8 +510,14 @@ class SlapdManager:
 		
 		# get config template and vars
 		template = self.tpl_env.get_template("configure/basic")
-		environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
-		
+
+		try:
+			environment_vars = self.n4d.get_variable_list(['LDAP_BASE_DN']).get('return')
+			if not environment_vars:
+				raise Exception("Couldn't get LDAP_BASE_DN")
+		except Exception as e:
+			raise(e)
+
 		# generate ssha password 
 		if admin_password is None:
 			ssha_password,admin_password = self.generate_random_ssha_password()
@@ -386,7 +526,7 @@ class SlapdManager:
 		environment_vars['PASSWORD_CRYPTED'] = ssha_password.strip()
 		
 		#render template with config and turn string into dictionary for get modify ldif
-		string_template = template.render(environment_vars).encode('UTF-8')
+		string_template = template.render(environment_vars)
 		aux_dic = ast.literal_eval(string_template)
 		
 		# Update changes in ldap 
@@ -394,18 +534,22 @@ class SlapdManager:
 			old_config = self.connect_ldapi.search_s(x,ldap.SCOPE_SUBTREE)
 			if len(old_config) > 0:
 				old_config = old_config[0][1]
-			changes = ldap.modlist.modifyModlist(old_config,aux_dic[x])
+			# try to ensure true differences comparing bytes on both sides
+			changes = ldap.modlist.modifyModlist(self.str_to_bytes(old_config),self.str_to_bytes(aux_dic[x]))
+			#changes = ldap.modlist.modifyModlist(old_config,self.str_to_bytes(aux_dic[x]))
+			##changes = self.remove_wrong_operations(changes)
 			try:
-				self.connect_ldapi.modify_s(x,changes)
+				self.connect_ldapi.modify_s(x,self.str_to_bytes(changes))
 			except Exception as e:
-				return {"status":False,"msg":e[0]["desc"]}
-		
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":e[0]["desc"]}
 		
 		modify_list = [(ldap.MOD_ADD, 'olcSizeLimit', 'unlimited')]
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_list)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
-			return {"status":False,"msg":e[0]["desc"]}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":e[0]["desc"]}
 
 		#Delete file password because this is a simple server
 		if os.path.exists(self.LDAP_SECRET1):
@@ -421,26 +565,27 @@ class SlapdManager:
 		password_file = open(self.LDAP_SECRET2,'w')
 		password_file.write(admin_password+"\n")
 		password_file.close()
-		os.chmod(self.LDAP_SECRET2,0600)
+		os.chmod(self.LDAP_SECRET2,0o0600)
 		
 		
 		#set bigger db size
 		
 		modify_list = [(ldap.MOD_DELETE, 'olcDbMaxSize', None)]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			# ignore this exception.
 			pass
 			
 		modify_list = [(ldap.MOD_ADD, 'olcDbMaxSize', "209715200")]
 		try:
-			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',modify_list)
+			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
-			return {"status":False,"msg":e[0]["desc"]}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":e[0]["desc"]}
 
-		
-		return {"status":True,"msg":"OpenLdap is configured as simple ldap. Admin password is inside " + self.LDAP_SECRET2}
+		return n4d.responses.build_successful_call_response(ret_msg="OpenLdap is configured as simple ldap. Admin password is inside {}".format(self.LDAP_SECRET2))
+		#return {"status":True,"msg":"OpenLdap is configured as simple ldap. Admin password is inside " + self.LDAP_SECRET2}
 
 	#def configure_simple_slapd
 	
@@ -454,8 +599,8 @@ class SlapdManager:
 	
 	def open_ports_slapd(self,server_ip):
 		
-		CLIENT_LDAP_URI = 'ldaps://'+ str(server_ip)
-		CLIENT_LDAP_URI_NOSSL = 'ldap://'+ str(server_ip)
+		CLIENT_LDAP_URI = 'ldaps://{}'.format(server_ip)
+		CLIENT_LDAP_URI_NOSSL = 'ldap://{}'.format(server_ip)
 		
 		open_ports = 'ldap://:389/ ldapi:///'
 		connection_ok = True
@@ -466,10 +611,10 @@ class SlapdManager:
 			try:
 				ok_token = True
 				result = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_BASE,attrlist=['olcTLSCertificateKeyFile','olcTLSCertificateFile'])[0][1]
-				if result.has_key('olcTLSCertificateKeyFile'):
+				if 'olcTLSCertificateKeyFile' in result:
 					if not os.path.exists(result['olcTLSCertificateKeyFile'][0]):
 						ok_token = False
-				if ok_token and result.has_key('olcTLSCertificateFile'):
+				if ok_token and 'olcTLSCertificateFile' in result:
 					if not os.path.exists(result['olcTLSCertificateFile'][0]):
 						ok_token = False
 				if ok_token:
@@ -492,23 +637,24 @@ class SlapdManager:
 		
 		n4d_mv(tmpfilepath,'/etc/default/slapd')
 		if 'ldaps:' in open_ports:
-			environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI',{'uri':CLIENT_LDAP_URI})
-		environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI_NOSSL',{'uri':CLIENT_LDAP_URI_NOSSL})
-		return {"status":True,"msg":"Open ports " + open_ports}
+			self.n4d.set_variable('CLIENT_LDAP_URI',{'uri':CLIENT_LDAP_URI})
+			#environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI',{'uri':CLIENT_LDAP_URI})
+		self.n4d.set_variable('CLIENT_LDAP_URI_NOSSL',{'uri':CLIENT_LDAP_URI_NOSSL})
+		#environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI_NOSSL',{'uri':CLIENT_LDAP_URI_NOSSL})
+		return n4d.responses.build_successful_call_response(ret_msg="Open ports ".format(open_ports))
+		#return {"status":True,"msg":"Open ports " + open_ports}
 	#def open_ports_slapd
 	
 	def reboot_slapd(self):
-		
 		proc = subprocess.Popen(['systemctl','restart',"slapd"],stdout=subprocess.PIPE,stdin=subprocess.PIPE).communicate()
-		
-		return {"status":True,"msg":"Server is reboot"}
+		return n4d.responses.build_successful_call_response(ret_msg="Server is reboot")
+		#return {"status":True,"msg":"Server is reboot"}
 	#def reboot_slapd
 	
 	def generate_ssl_certificates(self):
-		
 		proc = subprocess.Popen(['/usr/sbin/n4d-ldap-generator-ssl'],stdout=subprocess.PIPE,stdin=subprocess.PIPE).communicate()
-		
-		return {"status":True,"msg":"Certificates ssl has been generated"}
+		return n4d.responses.build_successful_call_response(ret_msg="Certificates ssl has been generated")
+		#return {"status":True,"msg":"Certificates ssl has been generated"}
 	#def generate_ssl_certificates
 	
 	def enable_folders(self):
@@ -518,7 +664,8 @@ class SlapdManager:
 		shutil.copy('/usr/share/n4d/templates/folder/teachers','/var/lib/lliurex-folders/local/teachers')
 		shutil.copy('/usr/share/n4d/templates/folder/admins','/var/lib/lliurex-folders/local/admins')
 		shutil.copy('/usr/share/n4d/templates/folder/netadmin','/var/lib/lliurex-folders/local/netadmin')
-		return {"status":True,"msg":"Folders are enabled."}
+		return n4d.responses.build_successful_call_response(ret_msg="Folders are enabled.")
+		#return {"status":True,"msg":"Folders are enabled."}
 	#def enable_folders
 	
 	def disable_folders(self):
@@ -526,12 +673,18 @@ class SlapdManager:
 		os.remove('/var/lib/lliurex-folders/local/teachers_share')
 		os.remove('/var/lib/lliurex-folders/local/students')
 		os.remove('/var/lib/lliurex-folders/local/teachers')
-		return {"status":True,"msg":"Folders are disabled."}
+		return n4d.responses.build_successful_call_response(ret_msg="Folders are disabled.")
+		#return {"status":True,"msg":"Folders are disabled."}
 	#def disable_folders
 	
 	
 	def set_replicate_interface(self, interface ):
-		return objects['NetworkManager'].set_replicate_interface(interface)
+		try:
+			nm = self.n4d.get_plugin('NetworkManager')
+			ret = nm.set_replicate_interface(interface)
+		except Exception as e:
+			return n4d.responses.build_failed_call_response(ret_msg='Fail to set interface replication'.format(e))
+		return n4d.responses.build_successful_call_response(ret)
 	#def set_replicate_interface
 
 	@try_connect	
@@ -541,16 +694,19 @@ class SlapdManager:
 			list_ip += " ldap://" + ip + "/"
 		remove_olcserver = [(ldap.MOD_DELETE,'olcServerID',None)]
 		modify_olcserver = [(ldap.MOD_ADD,'olcServerID',list_ip)]
-		objects['VariablesManager'].init_variable('LDAP_SID',{"SID":id_server})
+		self.n4d.set_variable('LDAP_SID',{"SID":id_server})
+		#objects['VariablesManager'].init_variable('LDAP_SID',{"SID":id_server})
 		try:
-			self.connect_ldapi.modify_s('cn=config',remove_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(remove_olcserver))
 		except:		
 			pass
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status": True, "msg":"This server now has ServerID " + str(id_server) + " on ldap"}
+			return n4d.responses.build_failed_call_response(ret_msg='{}'.format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="This server now has ServerID {} on ldap".format(id_server))
+		#return {"status": True, "msg":"This server now has ServerID " + str(id_server) + " on ldap"}
 		
 	#def set_serverid
 	
@@ -559,78 +715,89 @@ class SlapdManager:
 		try:
 			result = self.connect_ldapi.search_s("cn=config",ldap.SCOPE_BASE)[0][1]['olcServerID']
 		except Exception as e:
-			return {"status":False,"msg":"ServerID isn't defined"}
-		return {"status":True,"msg":result}
+			return n4d.responses.build_failed_call_response(ret_msg="ServerID isn't defined")
+			#return {"status":False,"msg":"ServerID isn't defined"}
+		return n4d.responses.build_successful_call_response(result)
+		#return {"status":True,"msg":result}
 		
 	#def get_serverid
 	
 	@try_connect	
 	def append_serverid(self, id_server, ip):
 		result = self.get_serverid()
-		if result['status']:
+		if result['status'] == 0 :
 			#EXIST OTHER ID SERVER
-			for i in result['msg']:
+			for i in result.get('return'):
 				if i.startswith(id_server+" ") or i == id_server:
-					return{"status":False,"msg":"This id has been registered"}
+					return n4d.responses.build_failed_call_response(ret_msg="This id has been registered")
+					#return{"status":False,"msg":"This id has been registered"}
 				
-			if len(result['msg']) == 1:
-				aux_ip = get_ip(objects['VariablesManager'].get_variable('INTERFACE_REPLICATION'))
+			if len(result.get('return')) == 1:
+				aux_ip = get_ip(self.n4d.get_variable('INTERFACE_REPLICATION').get('result'))
 				if aux_ip == None :
-					return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
-				aux_sid = result['msg'][0].split(' ')[0]
+					return n4d.responses.build_failed_call_response(ret_msg="Replication interface has a problem with ip. Check it")
+					#return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
+				aux_sid = result.get('return')[0].split(' ')[0]
 				self.set_serverid(aux_sid,str(aux_ip))
 
-		list_ip = str(id_server) + " ldap://"+str(ip) + "/"
+		list_ip = "{} ldap://{}/".format(id_server,ip)
 		modify_olcserver = [(ldap.MOD_ADD,'olcServerID',list_ip)]
 
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":ip + " has been appended"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="{} has been appended".format(ip))
+		#return {"status":True,"msg":ip + " has been appended"}
 	#def append_serverid
 
 	@try_connect
 	def delete_serverid(self, ip):
 		result = self.get_serverid()
-		if result['status']:
-			for i in result['msg']:
+		if result['status'] == 0:
+			ret = result.get('return')
+			for i in ret:
 				if i.rstrip('/').endswith(ip):
-					result['msg'].remove(i)
-			modify_olcserver = [(ldap.MOD_REPLACE,'olcServerID',result['msg'])]
+					ret.remove(i)
+			modify_olcserver = [(ldap.MOD_REPLACE,'olcServerID',ret)]
 		else:
-			return {"status":False,"msg":"server hasn't server ID key"}
+			return n4d.responses.build_failed_call_response(ret_msg="server hasn't server ID key")
+			#return {"status":False,"msg":"server hasn't server ID key"}
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Server with ip " + ip + " has been delete"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Server with ip {} has been delete".format(ip))
+		#return {"status":True,"msg":"Server with ip " + ip + " has been delete"}
 	#def delete_server
 	
 	@try_connect
 	def set_serverid_batch(self, list_serverid):
 		result = self.get_serverid()
 		modify_olcserver = []
-		if result['status']:
+		if result['status'] == 0:
 			modify_olcserver.append((ldap.MOD_REPLACE,'olcServerID',list_serverid))
 		else:
 			modify_olcserver.append((ldap.MOD_ADD,'olcServerID',list_serverid))
 		try:
-			self.connect_ldapi.modify_s('cn=config',modify_olcserver)
+			self.connect_ldapi.modify_s('cn=config',self.str_to_bytes(modify_olcserver))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"OlcServerId is updated"}
-	
-
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="OlcServerId is updated")
+		#return {"status":True,"msg":"OlcServerId is updated"}
 
 	@try_connect
 	def enable_module(self, name):
 		try:
-			self.connect_ldapi.modify_s('cn=module{0},cn=config',[(ldap.MOD_ADD,'olcModuleLoad',name)])
+			self.connect_ldapi.modify_s('cn=module{0},cn=config',self.str_to_bytes([(ldap.MOD_ADD,'olcModuleLoad',name)]))
 		except Exception as e:
-			return {'status':False,'msg':str(e)}
-		return {'status':True,'msg': 'module' + str(name) + ' has been enabled' }
-		
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {'status':False,'msg':str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="module {} has been enabled".format(name))
+		#return {'status':True,'msg': 'module' + str(name) + ' has been enabled' }
 	#def enable_module
 
 	def enable_replication_module(self):
@@ -638,14 +805,15 @@ class SlapdManager:
 		return result
 	#def enable_replication_module
 
-
 	@try_connect
 	def get_password_config(self):
 		try:
 			password = self.connect_ldapi.search_s('olcDatabase={0}config,cn=config',ldap.SCOPE_BASE)[0][1]['olcRootPW'][0]
 		except Exception as e:
-			return {"status":False,"msg":"Password is not defined"}
-		return {"status":True,"msg":password}
+			return n4d.responses.build_failed_call_response(ret_msg="Password is not defined")
+			#return {"status":False,"msg":"Password is not defined"}
+		return n4d.responses.build_successful_call_response(password)
+		#return {"status":True,"msg":password}
 	#def get_password_config
 	
 	@try_connect
@@ -655,20 +823,24 @@ class SlapdManager:
 				changes = [(ldap.MOD_ADD,'olcRootPW',password)]
 			else:
 				changes = [(ldap.MOD_REPLACE,'olcRootPW',password)]
-			self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',changes)
+			self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',self.str_to_bytes(changes))
 		except Exception as e:
-			return {"status":False,"msg" : str(e)}
-		return {"status": True, "msg" : "Password is set"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg" : str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Password is set")
+		#return {"status": True, "msg" : "Password is set"}
 	#def set_password_config
 	
 	@try_connect
 	def delete_password_config(self):
 		try:
 			changes = [(ldap.MOD_DELETE,'olcRootPW')]
-			password = self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',changes)
+			password = self.connect_ldapi.modify_s('olcDatabase={0}config,cn=config',self.str_to_bytes(changes))
 		except Exception as e:
-			return {"status":False,"msg":"Password is not defined"}
-		return {"status":True,"msg":"Removed password from database config"}
+			return n4d.responses.build_failed_call_response(ret_msg="Password is not defined")
+			#return {"status":False,"msg":"Password is not defined"}
+		return n4d.responses.build_successful_call_response(ret_msg="Removed password from database config")
+		#return {"status":True,"msg":"Removed password from database config"}
 	#def delete_password_config
 	
 
@@ -680,17 +852,20 @@ class SlapdManager:
 			result = self.connect_ldapi.search_s(dn,ldap.SCOPE_ONELEVEL)
 			for x in result:
 				if 'syncprov' in x[0]:
-					return {"status":True,"msg":"Overlay has been enabled on the past"}
+					return n4d.responses.build_successful_call_response(ret_msg="Overlay has been enabled on the past")
+					#return {"status":True,"msg":"Overlay has been enabled on the past"}
 			
 		except ldap.NO_SUCH_OBJECT as e:
 			pass
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
 
 		add_entry = ldap.modlist.addModlist(x)
 		self.connect_ldapi.add_s('olcOverlay=syncprov,' + dn,add_entry)
 
-		return {"status":True,"msg":"Overlay is enabled"}
+		return n4d.responses.build_successful_call_response(ret_msg="Overlay is enabled")
+		#return {"status":True,"msg":"Overlay is enabled"}
 	#def enable_overlay_config
 	
 	@try_connect
@@ -701,15 +876,18 @@ class SlapdManager:
 			result = self.connect_ldapi.search_s(dn,ldap.SCOPE_ONELEVEL)
 			for x in result:
 				if 'syncprov' in x[0]:
-					return {"status":True,"msg":"Overlay has been enabled on the past"}	
+					return n4d.responses.build_successful_call_response(ret_msg="Overlay has been enabled on the past")
+					#return {"status":True,"msg":"Overlay has been enabled on the past"}	
 		except ldap.NO_SUCH_OBJECT as e:
 			pass
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
 
 		add_entry = ldap.modlist.addModlist(x)
 		self.connect_ldapi.add_s('olcOverlay=syncprov,' + dn,add_entry)
-		return {"status":True,"msg":"Overlay is enabled"}
+		return n4d.responses.build_successful_call_response(ret_msg="Overlay is enabled")
+		#return {"status":True,"msg":"Overlay is enabled"}
 	#def enable_overlay_data
 	
 	@try_connect
@@ -719,27 +897,32 @@ class SlapdManager:
 		try:
 			result = self.connect_ldapi.search_s('olcDatabase={0}config,cn=config',ldap.SCOPE_BASE)[0][1]
 			changes = []
-			if (not result.has_key('olcSyncrepl')):
-				server_id = objects['VariablesManager'].get_variable('LDAP_SID')
-				aux_ip = get_ip(objects['VariablesManager'].get_variable('INTERFACE_REPLICATION'))
+			if ('olcSyncrepl' not in result):
+				server_id = self.n4d.get_variable('LDAP_SID').get('return')
+				aux_ip = get_ip(self.n4d.get_variable('INTERFACE_REPLICATION').get('return'))
 				if aux_ip == None:
-					return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
+					return n4d.responses.build_failed_call_response(ret_msg="Replication interface has a problem with ip. Check it")
+					#return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
 				aux_result = self.get_password_config()
-				if not aux_result['status']:
-					return {"status":False,"msg":"Error on password config"}
+				if not aux_result['status'] != 0:
+					return n4d.responses.build_failed_call_response(ret_msg="Error on password config")
+					#return {"status":False,"msg":"Error on password config"}
 				changes.append((ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(server_id),'ip':aux_ip,'password':str(aux_result['msg'])}))
 				changes.append((ldap.MOD_ADD,'olcMirrorMode','TRUE'))
 				
 			changes.insert(0,(ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password)}))
 			
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
-				return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":str(e)}
 
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Server is join"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Server joined")
+		#return {"status":True,"msg":"Server is join"}
 	#def add_rid_config
 
 	@try_connect
@@ -754,14 +937,16 @@ class SlapdManager:
 		delete_chages = [(ldap.MOD_DELETE,'olcSyncrepl')]
 		new_changes = [(ldap.MOD_ADD,'olcSyncrepl',list_rid)]
 		try:
-			self.connect_ldapi.modify_s(dn,delete_chages)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(delete_chages))
 		except Exception as e:
 			pass
 		try:
-			self.connect_ldapi.modify_s(dn,new_changes)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(new_changes))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"set news rids"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="set new rids")
+		#return {"status":True,"msg":"set news rids"}
 	#def set_rid_config
 	
 	@try_connect
@@ -769,17 +954,19 @@ class SlapdManager:
 		try:
 			result = self.connect_ldapi.search_s('olcDatabase={0}config,cn=config',ldap.SCOPE_BASE)[0][1]['olcSyncrepl']
 		except Exception as e:
-			return {"status":False,"msg":"ServerID isn't defined"}
-		return {"status":True,"msg":result}
+			return n4d.responses.build_failed_call_response(ret_msg="ServerID isn't defined")
+			#return {"status":False,"msg":"ServerID isn't defined"}
+		return n4d.responses.build_successful_call_response(result)
+		#return {"status":True,"msg":result}
 	#def get_rid_config
-	
 	
 	def backup_config(self, path):
 		os.system("slapcat -n 0 >> " + str(path))
 		prevmask = os.umask(0)
-		os.chmod(path,0600)
+		os.chmod(path,0o0600)
 		os.umask(prevmask)
-		return {"status":True,"msg":"Backup created on " + str(path)}
+		return n4d.responses.build_successful_call_response(ret_msg="Backup created on {}".format(path))
+		#return {"status":True,"msg":"Backup created on " + str(path)}
 	#def backup_config
 	
 	def restore_backup_config(self, path):
@@ -788,9 +975,8 @@ class SlapdManager:
 		os.system("slapadd -n 0 -l "+path+" -F /etc/ldap/slapd.d/")
 		os.system("chown -R openldap:openldap /etc/ldap/slapd.d/")
 		os.system("systemctl start slapd")
-		return {"status":True,"msg":"Config backup restored"}
-	
-	
+		return n4d.responses.build_successful_call_response(ret_msg="Config backup restored")
+		#return {"status":True,"msg":"Config backup restored"}
 	
 	@try_connect
 	def add_rid_data(self, rid, ip, password, rootdn, basedn):
@@ -807,17 +993,19 @@ class SlapdManager:
 			result = self.connect_ldapi.search_s(dn,ldap.SCOPE_BASE)[0][1]
 			changes = []
 			
-			if (not result.has_key('olcSyncrepl')):
-				aux_base_dn = objects['VariablesManager'].get_variable('LDAP_BASE_DN')
-				if result.has_key('olcRootDN') and len(result['olcRootDN']) > 0 :
+			if ('olcSyncrepl' not in result):
+				aux_base_dn = self.n4d.get_variable('LDAP_BASE_DN').get('return')
+				if 'olcRootDN' in result and len(result['olcRootDN']) > 0 :
 					aux_rootdn = result['olcRootDN'][0]
 				else:
-					return {"status":False,"msg":"Error on LDAP database. There isn't rootdn"}
+					return n4d.responses.build_failed_call_response(ret_msg="Error on LDAP database. There isn't rootdn")
+					#return {"status":False,"msg":"Error on LDAP database. There isn't rootdn"}
 				
-				server_id = objects['VariablesManager'].get_variable('LDAP_SID')
-				aux_ip = get_ip(objects['VariablesManager'].get_variable('INTERFACE_REPLICATION'))
+				server_id = self.n4d.get_variable('LDAP_SID').get('return')
+				aux_ip = get_ip(self.n4d.get_variable('INTERFACE_REPLICATION').get('return'))
 				if aux_ip == None:
-					return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
+					return n4d.responses.build_failed_call_response(ret_msg="Replication interface has a problem with ip. Check it")
+					#return {"status":False,"msg":"Replication interface has a problem with ip. Check it"}
 				aux_file = open(self.LDAP_SECRET2,'r')
 				aux_password = aux_file.readline().strip()
 				aux_file.close()
@@ -827,17 +1015,20 @@ class SlapdManager:
 				changes.append((ldap.MOD_ADD,'olcDbIndex','entryCSN  eq'))
 			else:
 				changes.append((ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password),'rootdn':str(rootdn),'basedn':str(basedn)}))
-				if not result.has_key('olcMirrorMode'):
+				if 'olcMirrorMode' not in result:
 					changes.append((ldap.MOD_ADD,'olcMirrorMode','TRUE'))
 
 			try:
-					self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
-					return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":str(e)}
 
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Server is join"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Server joined")
+		#return {"status":True,"msg":"Server is join"}
 	#def add_rid_data
 	
 	@try_connect
@@ -849,11 +1040,13 @@ class SlapdManager:
 	def block_replication(self):
 		template = 'iptables -A INPUT -p tcp --dport %(port)s -s %(ip)s -j ACCEPT'
 		negate = 'iptables -A INPUT -p tcp --dport %(port)s -j DROP'
-		ip = get_ip(objects['VariablesManager'].get_variable('INTERFACE_REPLICATION'))
+		#ip = get_ip(objects['VariablesManager'].get_variable('INTERFACE_REPLICATION'))
+		ip = get_ip(self.n4d.get_variable('INTERFACE_REPLICATION').get('return'))
 		iptables_rules = [template%{'ip':'127.0.0.1','port':'389'},template%{'ip':'127.0.0.1','port':'636'},template%{'port':'389','ip':str(ip)},template%{'port':'636','ip':str(ip)},negate%{'port':'389'},negate%{'port':'636'}]
 		for x in iptables_rules:
 			os.system(x)
-		return {"status":True,"msg":"Replication is block"}
+		return n4d.responses.build_successful_call_response(ret_msg="Replication blocked")
+		#return {"status":True,"msg":"Replication is block"}
 	#def block_replication
 	
 	def unblock_replication(self):
@@ -863,10 +1056,10 @@ class SlapdManager:
 		for item in output:
 			if "--dport 389" in item or "--dport 636" in item:
 				ret.append("iptables " + item.replace("-A","-D"))
-
 		for item in ret:
 			os.system(item)
-		return {"status":True,"msg":"replication blockec is removed"}
+		return n4d.responses.build_successful_call_response(ret_msg="replication block is removed")
+		#return {"status":True,"msg":"replication blockec is removed"}
 	#def unblock_replication
 	
 	@try_connect
@@ -874,22 +1067,26 @@ class SlapdManager:
 		try:
 			csn = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_BASE,attrlist=['contextCSN'])
 		except Exception as e:
-			return {"status":False,"msg":None}
-		return {"status":True,"msg":csn}
+			return n4d.responses.build_failed_call_response()
+			#return {"status":False,"msg":None}
+		return n4d.responses.build_successful_call_response(csn)
+		#return {"status":True,"msg":csn}
 	#def get_csn_config
 	
 	@try_connect
 	def get_csn_data(self):
-		aux_base_dn = objects['VariablesManager'].get_variable('LDAP_BASE_DN')
+		aux_base_dn = self.n4d.get_variable('LDAP_BASE_DN').get('return')
 		if aux_base_dn == None:
-			return {"status":False,"msg":"LDAP_BASE_DN is not defined"}
+			return n4d.responses.build_failed_call_response(ret_msg="LDAP_BASE_DN is not defined")
+			#return {"status":False,"msg":"LDAP_BASE_DN is not defined"}
 		try:
 			csn = self.connect_ldapi.search_s(aux_base_dn,ldap.SCOPE_BASE,attrlist=['contextCSN'])[0][1]['contextCSN']
 		except Exception as e:
-			return {"status":False,"msg":None}
-		return {"status":True,"msg":csn}
+			return n4d.responses.build_failed_call_response()
+			#return {"status":False,"msg":None}
+		return n4d.responses.build_successful_call_response(csn)
+		#return {"status":True,"msg":csn}
 	#def get_csn_data
-	
 	
 	def get_ldap_password(self):
 		password = None
@@ -904,19 +1101,23 @@ class SlapdManager:
 			f.close()
 			password=lines[0].replace("\n","")
 		else:
-			return {'status':False,'msg':'Password is not set'}
-		return {'status':True,'msg':password}
+			return n4d.responses.build_failed_call_response(ret_msg="Password is not set")
+			#return {'status':False,'msg':'Password is not set'}
+		return n4d.responses.build_successful_call_response(password)
+		#return {'status':True,'msg':password}
 	#def get_ldap_password
 	
 	def active_data_replication(self):
-		temp_dn = "".join(random.sample(string.letters,10))
-		base_dn = objects["VariablesManager"].get_variable("LDAP_BASE_DN")
+		temp_dn = "".join(random.sample(string.ascii_letters,10))
+		base_dn = self.n4d.get_variable("LDAP_BASE_DN").get('return')
 		if base_dn == None:
-			return {"status":False,"msg":"LDAP_BASE_DN is not defined"}
+			return n4d.responses.build_failed_call_response(ret_msg="LDAP_BASE_DN is not defined")
+			#return {"status":False,"msg":"LDAP_BASE_DN is not defined"}
 		aux_dic = {"ou="+temp_dn+","+base_dn: { "objectClass":["organizationalUnit"], "ou":temp_dn }}
 		self.insert_dictionary(aux_dic)
 		self.delete_dn(temp_dn)
-		return {"status":True,"msg":"Activated replication"}
+		return n4d.responses.build_successful_call_response(ret_msg="Activated replication")
+		#return {"status":True,"msg":"Activated replication"}
 	#def active_data_replication
 
 	@try_connect
@@ -926,14 +1127,16 @@ class SlapdManager:
 		delete_chages = [(ldap.MOD_DELETE,'olcSpCheckpoint')]
 		new_changes = [(ldap.MOD_ADD,'olcSpCheckpoint',str(num_changes)+ " " + str(minutes))]
 		try:
-			self.connect_ldapi.modify_s(dn,delete_chages)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(delete_chages))
 		except Exception as e:
 			pass
 		try:
-			self.connect_ldapi.modify_s(dn,new_changes)
+			self.connect_ldapi.modify_s(dn,self.str_to_bytes(new_changes))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"set checkpoint"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="set checkpoint")
+		#return {"status":True,"msg":"set checkpoint"}
 	#def enable_syncprov_checkpoint
 
 	@try_connect
@@ -951,12 +1154,13 @@ class SlapdManager:
 			changes = []
 			changes.append((ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password),'rootdn':str(rootdn),'basedn':str(basedn)}))
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
-				return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Server is join"}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+		return n4d.responses.build_successful_call_response(ret_msg="Server joined")
+		#return {"status":True,"msg":"Server is join"}
 	#def add_rid_data_simple_sync
 
 	@try_connect
@@ -966,23 +1170,26 @@ class SlapdManager:
 			changes = []
 			changes.append((ldap.MOD_ADD,'olcUpdateRef','ldaps://'+str(ip)))
 			try:
-				self.connect_ldapi.modify_s(dn,changes)
+				self.connect_ldapi.modify_s(dn,self.str_to_bytes(changes))
 			except Exception as e:
-				return {"status":False,"msg":str(e)}
+				return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+				#return {"status":False,"msg":str(e)}
 		except Exception as e:
-			return {"status":False,"msg":str(e)}
-		return {"status":True,"msg":"Added updateRef to " + str(ip)}
+			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
+			#return {"status":False,"msg":str(e)}
+		return n4d.responses.build_successful_call_response(ret_msg="Added updateRef to ".format(ip))
+		#return {"status":True,"msg":"Added updateRef to " + str(ip)}
 
 	def set_master_server_ip(self,ip):
-		objects['VariablesManager'].init_variable('MASTER_SERVER_IP',{'ip':ip})
-		return {"status":True,"msg":"Variable MASTER_SERVER_IP is set to " + str(ip)}
+		self.n4d.set_variable('MASTER_SERVER_IP',{'ip':ip})
+		return n4d.responses.build_successful_call_response(ret_msg="Variable MASTER_SERVER_IP is set to {}".format(ip))
+		#return {"status":True,"msg":"Variable MASTER_SERVER_IP is set to " + str(ip)}
 	#def set_master_server_ip
 
 	def clean_master_server_ip(self):
-
-		objects['VariablesManager'].set_variable("MASTER_SERVER_IP",None)
-		return {"status":True,"msg":"Variable MASTER_SERVER_IP is empty"}
-
+		self.n4d.set_variable("MASTER_SERVER_IP",None)
+		return n4d.responses.build_successful_call_response(ret_msg="Variable MASTER_SERVER_IP is empty")
+		#return {"status":True,"msg":"Variable MASTER_SERVER_IP is empty"}
 	#def clean_master_server_ip
 
 	'''
@@ -1025,11 +1232,11 @@ class SlapdManager:
 			return 1
 	#def __becmp
 	
-	@staticmethod
-	def __dncmp__(x,y):
-		aux_x = x.split(',')
-		aux_y = y.split(',')
-		return cmp(len(aux_x),len(aux_y))
+	#@staticmethod
+	#def __dncmp__(x,y):
+	#	aux_x = x.split(',')
+	#	aux_y = y.split(',')
+	#	return cmp(len(aux_x),len(aux_y))
 	#def __dncmp__
 	
 	def test_ldapi_connection(self):
@@ -1043,7 +1250,7 @@ class SlapdManager:
 	def connection_ldapi(self):
 		self.auth=ldap.sasl.sasl('','EXTERNAL')
 		try:
-			self.connect_ldapi=ldap.initialize('ldapi:///',trace_level=0)
+			self.connect_ldapi=ldap.initialize('ldapi:///',trace_level=0,bytes_mode=False)
 			self.connect_ldapi.protocol_version=3
 			self.connect_ldapi.sasl_interactive_bind_s("",self.auth)
 			return True
@@ -1063,7 +1270,7 @@ class SlapdManager:
 
 	def connection_ldap(self):
 		try:
-			self.connect_ldap=ldap.initialize('ldap://localhost:389',trace_level=0)
+			self.connect_ldap=ldap.initialize('ldap://localhost:389',trace_level=0,bytes_mode=False)
 			self.connect_ldap.protocol_version=3
 			if os.path.exists(self.LDAP_SECRET1):
 				f=open(self.LDAP_SECRET1)
@@ -1078,7 +1285,12 @@ class SlapdManager:
 			else:
 				self.connect_ldap = None
 				return False
-			environment_vars = objects["VariablesManager"].get_variable_list(['LDAP_BASE_DN'])
+			try:
+				environment_vars = self.n4d.get_variable_list(['LDAP_BASE_DN']).get('return')
+				if not environment_vars:
+					raise Exception("Couldn't get LDAP_BASE_DN")
+			except Exception as e:
+				raise(e)
 			self.connect_ldap.bind_s("cn=admin,"+environment_vars['LDAP_BASE_DN'],password)
 			return True
 		except Exception as e:
@@ -1086,7 +1298,7 @@ class SlapdManager:
 			return False
 
 	
-	def getsalt(self,chars = string.letters + string.digits,length=16):
+	def getsalt(self,chars = string.ascii_letters + string.digits,length=16):
 		salt = ""
 		for i in range(int(length)):
 			salt += random.choice(chars)
@@ -1094,15 +1306,25 @@ class SlapdManager:
 	#def getsalt
 
 	def generate_random_ssha_password(self):
-		password="".join(random.sample(string.letters+string.digits, 10))
+		password="".join(random.sample(string.ascii_letters+string.digits, 10))
 		return self.generate_ssha_password(password),password
 	#def generate_random_ssha_password
 
 	def generate_ssha_password(self,password):
-		salt=self.getsalt()
-		return "{SSHA}" + base64.encodestring(hashlib.sha1(str(password) + salt).digest() + salt)
+		salt=self.str_to_bytes(self.getsalt())
+		return "{SSHA}" + base64.encodebytes(hashlib.sha1(self.str_to_bytes(password) + salt).digest() + salt).decode('utf-8')
 	#def generate_ssha_password  	
 
 
 if __name__ == '__main__':
-	a = Slapd()
+	if __DEBUGGING__:
+		c = SlapdManager()
+		print(c.load_lliurex_schema())
+		print(c.enable_tls_communication('/etc/ldap/ssl/slapd.cert','/etc/ldap/ssl/slapd.key'))
+		print(c.configure_simple_slapd())
+		print(c.open_ports_slapd('10.0.2.254'))
+		print(c.reboot_slapd())
+		print(c.load_basic_struture())
+		print(c.change_admin_passwd('lliurex'))
+		# print(c.enable_folders())
+		print(c.clean_master_server_ip())
