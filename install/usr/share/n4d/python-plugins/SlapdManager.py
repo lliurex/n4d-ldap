@@ -232,7 +232,9 @@ class SlapdManager:
 				#return {"status":False,"msg":"Schema " + str(cn) + " already exist. You can update with update option on True"}
 			old_config['cn'] = schema['cn']
 			old_config['objectClass'] = schema['objectClass']
-			changes = ldap.modlist.modifyModlist(old_config,schema)
+			# not tested, but try to ensure bytes format on both sides for true differences
+			# changes = ldap.modlist.modifyModlist(old_config,schema)
+			changes = ldap.modlist.modifyModlist(self.str_to_bytes(old_config),self.str_to_bytes(schema))
 			try:
 				self.connect_ldapi.modify_s(old_cn,self.str_to_bytes(changes))
 				return n4d.responses.build_successful_call_response(ret_msg="Schema {} is updated".format(cn))
@@ -267,7 +269,7 @@ class SlapdManager:
 			return n4d.responses.build_failed_call_response(ret_msg="not found database config on OpenLdap")
 			#return {"status":False,"msg":"not found database config on OpenLdap"}
 
-		if aux_index.has_key('olcDbIndex'):
+		if 'olcDbIndex' in aux_index:
 			old_Index = aux_index['olcDbIndex']
 		else:
 			old_Index = []
@@ -495,9 +497,9 @@ class SlapdManager:
 		#return {"status":True,"msg":"Ldap admin password updated"}
 	#def change_admin_passwd
 
-	def remove_wrong_operations(self,changelist):
-		wrongkeys = [ 'olcDatabase', 'objectClass', 'olcDbDirectory' ]
-		return [ (op,key,value) for op,key,value in changelist if key not in wrongkeys ]
+	# def remove_wrong_operations(self,changelist):
+	# 	wrongkeys = [ 'olcDatabase', 'objectClass', 'olcDbDirectory' ]
+	# 	return [ (op,key,value) for op,key,value in changelist if key not in wrongkeys ]
 			
 	@try_connect	
 	def configure_simple_slapd(self,admin_password=None):
@@ -532,8 +534,10 @@ class SlapdManager:
 			old_config = self.connect_ldapi.search_s(x,ldap.SCOPE_SUBTREE)
 			if len(old_config) > 0:
 				old_config = old_config[0][1]
-			changes = ldap.modlist.modifyModlist(old_config,aux_dic[x])
-			changes = self.remove_wrong_operations(changes)
+			# try to ensure true differences comparing bytes on both sides
+			changes = ldap.modlist.modifyModlist(self.str_to_bytes(old_config),self.str_to_bytes(aux_dic[x]))
+			#changes = ldap.modlist.modifyModlist(old_config,self.str_to_bytes(aux_dic[x]))
+			##changes = self.remove_wrong_operations(changes)
 			try:
 				self.connect_ldapi.modify_s(x,self.str_to_bytes(changes))
 			except Exception as e:
@@ -607,10 +611,10 @@ class SlapdManager:
 			try:
 				ok_token = True
 				result = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_BASE,attrlist=['olcTLSCertificateKeyFile','olcTLSCertificateFile'])[0][1]
-				if result.has_key('olcTLSCertificateKeyFile'):
+				if 'olcTLSCertificateKeyFile' in result:
 					if not os.path.exists(result['olcTLSCertificateKeyFile'][0]):
 						ok_token = False
-				if ok_token and result.has_key('olcTLSCertificateFile'):
+				if ok_token and 'olcTLSCertificateFile' in result:
 					if not os.path.exists(result['olcTLSCertificateFile'][0]):
 						ok_token = False
 				if ok_token:
@@ -893,7 +897,7 @@ class SlapdManager:
 		try:
 			result = self.connect_ldapi.search_s('olcDatabase={0}config,cn=config',ldap.SCOPE_BASE)[0][1]
 			changes = []
-			if (not result.has_key('olcSyncrepl')):
+			if ('olcSyncrepl' not in result):
 				server_id = self.n4d.get_variable('LDAP_SID').get('return')
 				aux_ip = get_ip(self.n4d.get_variable('INTERFACE_REPLICATION').get('return'))
 				if aux_ip == None:
@@ -989,9 +993,9 @@ class SlapdManager:
 			result = self.connect_ldapi.search_s(dn,ldap.SCOPE_BASE)[0][1]
 			changes = []
 			
-			if (not result.has_key('olcSyncrepl')):
+			if ('olcSyncrepl' not in result):
 				aux_base_dn = self.n4d.get_variable('LDAP_BASE_DN').get('return')
-				if result.has_key('olcRootDN') and len(result['olcRootDN']) > 0 :
+				if 'olcRootDN' in result and len(result['olcRootDN']) > 0 :
 					aux_rootdn = result['olcRootDN'][0]
 				else:
 					return n4d.responses.build_failed_call_response(ret_msg="Error on LDAP database. There isn't rootdn")
@@ -1011,7 +1015,7 @@ class SlapdManager:
 				changes.append((ldap.MOD_ADD,'olcDbIndex','entryCSN  eq'))
 			else:
 				changes.append((ldap.MOD_ADD,'olcSyncrepl',template%{'rid':int(rid),'ip':str(ip),'password':str(password),'rootdn':str(rootdn),'basedn':str(basedn)}))
-				if not result.has_key('olcMirrorMode'):
+				if 'olcMirrorMode' not in result:
 					changes.append((ldap.MOD_ADD,'olcMirrorMode','TRUE'))
 
 			try:
