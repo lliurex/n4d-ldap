@@ -1,3 +1,9 @@
+n4d-ldap (0.53.2) focal; urgency=medium
+
+  * Remove temporally dependencies to build server flavour alpha
+
+ -- Raul Rodrigo Segura <raurodse@gmail.com>  Wed, 10 Feb 2021 16:42:44 +0100
+
 n4d-ldap (0.53.1) focal; urgency=medium
 
   * Fixes
