@@ -174,7 +174,8 @@ class SlapdManager:
 		# Get files from enable acl path ordered by number. If file name not start by number,
 		# it's putting in the end ordered by letter.
 		list_files_acl = os.listdir(self.enable_acl_path)
-		list_files_acl.sort(lambda x,y:self.__becmp__(self.__beint__(x),self.__beint__(y)))
+		#list_files_acl.sort(lambda x,y:self.__becmp__(self.__beint__(x),self.__beint__(y)))
+		list_files_acl.sort()
 		
 		# Prepare environment
 		try:
@@ -197,7 +198,7 @@ class SlapdManager:
 			# Render acl to replace vars
 			acl_template = Template(aux_acl)
 			aux_acl = acl_template.render(environment_vars).encode('utf-8')
-			aux_acl = "{"+str(i)+"}" + aux_acl
+			aux_acl = bytes("{%s}"%i,"utf-8") + aux_acl
 			i+=1
 			list_acl.append(aux_acl)
 		
@@ -255,14 +256,17 @@ class SlapdManager:
 	
 	@try_connect	
 	def update_index(self,index,add_index=True):
-		searching_backend = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_SUBTREE,filterstr='(objectClass=olcBackendConfig)',attrlist=['olcBackend'])
+		searching_backend = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_SUBTREE,filterstr='(objectClass=olcDatabaseConfig)',attrlist=['olcDatabase'])
+
 		if len(searching_backend) > 0 :
-			backend = searching_backend[0][1]['olcBackend'][0]
+			backend = searching_backend[2][1]['olcDatabase'][0]
 		else:
 			return n4d.responses.build_failed_call_response(ret_msg="not found backend for OpenLdap")
 			#return {"status":False,"msg":"not found backend for OpenLdap"}
-
+		
+		backend=backend.decode("utf-8")
 		searching_database = self.connect_ldapi.search_s('cn=config',ldap.SCOPE_SUBTREE,filterstr='(olcDatabase~='+backend+')',attrlist=['olcDbIndex'])
+		
 		if len(searching_database) > 0 :
 			cn,aux_index = searching_database[0]
 		else:
@@ -270,11 +274,12 @@ class SlapdManager:
 			#return {"status":False,"msg":"not found database config on OpenLdap"}
 
 		if 'olcDbIndex' in aux_index:
-			old_Index = aux_index['olcDbIndex']
+			old_index = aux_index['olcDbIndex']
 		else:
-			old_Index = []
+			
+			old_index = []
 
-		list_index = old_Index[:]
+		list_index = old_index[:]
 		if type(index) == type([]):
 			for x in index:
 				if add_index:
@@ -288,16 +293,28 @@ class SlapdManager:
 			else:
 				if index in list_index:
 					list_index.remove(index)
-		list_index = list(set(list_index))
-		remove_acl = [(ldap.MOD_DELETE,'olcDbIndex',[""])]
+		new_list=[]
+		
+		for item in list_index:
+			if type(item)==str:
+				item=bytes(item,"utf-8")
+			if item not in new_list:
+				new_list.append(item)
+				
+		
+		list_index=new_list
+		remove_acl = [(ldap.MOD_DELETE,'olcDbIndex',None)]
 		modify_list = [(ldap.MOD_REPLACE,'olcDbIndex',list_index)]
 		try:
 			self.connect_ldapi.modify_s(cn,self.str_to_bytes(remove_acl))
-		except Exception as e:		
-			pass
+		except Exception as e:	
+			print("Failed removing")
+			print(e)
+			
 		try:
 			self.connect_ldapi.modify_s(cn,self.str_to_bytes(modify_list))
 		except Exception as e:
+			print("Failed adding")
 			self.connect_ldapi.modify_s(cn,self.str_to_bytes([(ldap.MOD_ADD,'olcDbIndex',old_Index)]))
 			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
 			#return {"status":False,"msg":str(e)}
@@ -368,9 +385,10 @@ class SlapdManager:
 		#render template with config and turn string into dictionary for get modify ldif
 		string_template = template.render(environment_vars)
 		aux_dic = ast.literal_eval(string_template)
-		
+		aux_dic=self.str_to_bytes(aux_dic)
 		#Load basic strucutre
 		result = self.insert_dictionary(aux_dic)
+		
 		if result['status'] == 0:
 			return n4d.responses.build_successful_call_response(ret_msg="Root structure created")
 			#return {"status":True,"msg":"Root structure created"} 
@@ -394,10 +412,12 @@ class SlapdManager:
 		dictionary_keys = dictionary.keys()
 		dictionary_keys = sorted(dictionary_keys,key=lambda x: len(x.split(',')))
 		aux_msg = ""
+		
 		for x in dictionary_keys:
 			try:
 				add_entry = ldap.modlist.addModlist(dictionary[x])
 				self.connect_ldap.add_s(x,add_entry)
+				
 			except ldap.ALREADY_EXISTS as e:
 				if i_existing:
 					aux_msg += "\nEntry " + str(x) + " has been omited because already exists"
@@ -405,6 +425,7 @@ class SlapdManager:
 					return n4d.responses.build_failed_call_response(ret_msg="Entry {} already exists".format(x))					
 					#return {"status":False ,"msg":"Entry " + str(x) + " already exists"}
 			except Exception as e:
+				print(e)
 				return n4d.responses.build_failed_call_response(ret_msg="Entry {} isn't possible create because {}".format(x,e))
 				#return {"status":False ,"msg":"Entry " + str(x) + " isn't possible create because "+ str(e)}
 		return n4d.responses.build_successful_call_response(ret_msg="All entry added {}".format(aux_msg))
@@ -637,9 +658,9 @@ class SlapdManager:
 		
 		n4d_mv(tmpfilepath,'/etc/default/slapd')
 		if 'ldaps:' in open_ports:
-			self.n4d.set_variable('CLIENT_LDAP_URI',{'uri':CLIENT_LDAP_URI})
+			self.n4d.set_variable('CLIENT_LDAP_URI',CLIENT_LDAP_URI)
 			#environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI',{'uri':CLIENT_LDAP_URI})
-		self.n4d.set_variable('CLIENT_LDAP_URI_NOSSL',{'uri':CLIENT_LDAP_URI_NOSSL})
+		self.n4d.set_variable('CLIENT_LDAP_URI_NOSSL',CLIENT_LDAP_URI_NOSSL)
 		#environment_vars = objects["VariablesManager"].init_variable('CLIENT_LDAP_URI_NOSSL',{'uri':CLIENT_LDAP_URI_NOSSL})
 		return n4d.responses.build_successful_call_response(ret_msg="Open ports ".format(open_ports))
 		#return {"status":True,"msg":"Open ports " + open_ports}
