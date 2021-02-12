@@ -1,3 +1,10 @@
+n4d-ldap (0.54) focal; urgency=medium
+
+  * Bug fixes. 
+  * Missing n4d migration
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Fri, 12 Feb 2021 14:00:29 +0100
+
 n4d-ldap (0.53.2) focal; urgency=medium
 
   * Remove temporally dependencies to build server flavour alpha
