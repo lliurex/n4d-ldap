@@ -213,9 +213,8 @@ class SlapdManager:
 			self.connect_ldapi.modify_s('olcDatabase={1}mdb,cn=config',self.str_to_bytes(modify_list))
 		except Exception as e:
 			return n4d.responses.build_failed_call_response(ret_msg="{}".format(e))
-			#return {"status":False,"msg":str(e)}
 		return n4d.responses.build_successful_call_response(ret_msg="Acl updated")
-		#return {"status":True,"msg":"Acl updated"}
+
 	#def load_acl
 	
 	@try_connect	
