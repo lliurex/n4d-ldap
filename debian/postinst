@@ -87,7 +87,7 @@ case "$1" in
 
 
 
-	n4d-modules enable-plugin /etc/n4d/conf.d/SlapdManager || true
+	n4d-modules enable-plugin /etc/n4d/conf.d/SlapdManager.json || true
 
 
 	;;

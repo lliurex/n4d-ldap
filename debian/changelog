@@ -1,3 +1,9 @@
+n4d-ldap (0.54.2) focal; urgency=medium
+
+  * fixed n4d-modules in postinst
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Fri, 12 Feb 2021 14:39:55 +0100
+
 n4d-ldap (0.54.1) focal; urgency=medium
 
   * added n4d-netfolders dependency
