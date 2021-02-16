@@ -882,6 +882,7 @@ class SlapdManager:
 			#return {"status":False,"msg":str(e)}
 
 		add_entry = ldap.modlist.addModlist(x)
+		add_entry= self.str_to_bytes(add_entry)
 		self.connect_ldapi.add_s('olcOverlay=syncprov,' + dn,add_entry)
 
 		return n4d.responses.build_successful_call_response(ret_msg="Overlay is enabled")
@@ -905,6 +906,7 @@ class SlapdManager:
 			#return {"status":False,"msg":str(e)}
 
 		add_entry = ldap.modlist.addModlist(x)
+		add_entry=self.str_to_bytes(add_entry)
 		self.connect_ldapi.add_s('olcOverlay=syncprov,' + dn,add_entry)
 		return n4d.responses.build_successful_call_response(ret_msg="Overlay is enabled")
 		#return {"status":True,"msg":"Overlay is enabled"}
