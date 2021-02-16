@@ -1,3 +1,9 @@
+n4d-ldap (0.54.3) focal; urgency=medium
+
+  * python2 > python3 ldap changes
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Tue, 16 Feb 2021 10:39:30 +0100
+
 n4d-ldap (0.54.2) focal; urgency=medium
 
   * fixed n4d-modules in postinst
