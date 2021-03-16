@@ -1,3 +1,9 @@
+n4d-ldap (0.55.1) bionic; urgency=medium
+
+  * Added n4d restart in postinst action
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Tue, 16 Mar 2021 17:16:49 +0100
+
 n4d-ldap (0.55) bionic; urgency=medium
 
   * Added postinst action to copy new templates
