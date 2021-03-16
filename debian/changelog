@@ -1,3 +1,9 @@
+n4d-ldap (0.54) bionic; urgency=medium
+
+  * Added postinst action to copy new templates
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Tue, 16 Mar 2021 11:25:37 +0100
+
 n4d-ldap (0.53) bionic; urgency=medium
 
   * Fixed perms that should not be applied

@@ -71,6 +71,13 @@ case "$1" in
 		cp /usr/share/n4d-ldap/one-shots/fix-replication-interface /etc/n4d/one-shot/
 		deb-systemd-invoke restart n4d || true
 	fi
+	
+	if dpkg --compare-versions "$2" lt 0.54; then
+		if [ -e '/var/lib/lliurex-folders/local/students' ]; then
+			cp /usr/share/n4d/templates/folder/students /var/lib/lliurex-folders/local/
+			cp /usr/share/n4d/templates/folder/teachers /var/lib/lliurex-folders/local/
+		fi
+	fi
 
 	if [ -e "$ORIGINAL_FILE" ]; then
 
