@@ -1,3 +1,10 @@
+n4d-ldap (0.56) bionic; urgency=medium
+
+  * Going back to old templates. Fix should have been done in
+    NetfoldersManager
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Thu, 18 Mar 2021 11:22:32 +0100
+
 n4d-ldap (0.55.1) bionic; urgency=medium
 
   * Added n4d restart in postinst action
