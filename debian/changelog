@@ -1,3 +1,9 @@
+n4d-ldap (0.55) focal; urgency=medium
+
+  * get_backup_name standarization
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Thu, 27 May 2021 12:20:08 +0200
+
 n4d-ldap (0.54.3) focal; urgency=medium
 
   * python2 > python3 ldap changes
