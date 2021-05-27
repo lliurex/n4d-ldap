@@ -17,7 +17,7 @@ import shutil
 from n4d.client import Client,Key,Credential
 from n4d.server.core import Core
 import n4d.responses
-from n4d.utils import n4d_mv
+from n4d.utils import n4d_mv,get_backup_name
 import sys
 
 __DEBUGGING__=False
