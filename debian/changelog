@@ -1,4 +1,4 @@
-n4d-ldap (0.55) focal; urgency=medium
+n4d-ldap (0.56) focal; urgency=medium
 
   * get_backup_name standarization
 
