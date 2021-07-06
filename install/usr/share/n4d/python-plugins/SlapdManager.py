@@ -142,9 +142,9 @@ class SlapdManager:
 				golem.ldap.connect()
 				return n4d.responses.build_successful_call_response(file_path)
 			else:
-				return n4d.responses.build_failed_call_response(BACKUP_ERROR,"Could not find Golem plugin")
+				return n4d.responses.build_failed_call_response(SlapdManager.BACKUP_ERROR,"Could not find Golem plugin")
 		except Exception as e:
-			return n4d.responses.build_failed_call_response(BACKUP_ERROR,str(e))
+			return n4d.responses.build_failed_call_response(SlapdManager.BACKUP_ERROR,str(e))
 		
 	#def backup
 	
