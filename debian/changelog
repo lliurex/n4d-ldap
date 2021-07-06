@@ -1,3 +1,9 @@
+n4d-ldap (0.58.1) focal; urgency=medium
+
+  * fixed backup variable name
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Tue, 06 Jul 2021 14:30:13 +0200
+
 n4d-ldap (0.58) focal; urgency=medium
 
   * fixed backup/restore responses
