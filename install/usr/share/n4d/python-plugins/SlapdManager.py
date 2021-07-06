@@ -77,6 +77,9 @@ if __DEBUGGING__:
 
 class SlapdManager:
 	
+	BACKUP_ERROR=-10
+	RESTORE_ERROR=-20
+	
 	def __init__(self):
 		
 		self.mkey = Key.master_key()
@@ -134,14 +137,14 @@ class SlapdManager:
 			file_path = folder_path + get_backup_name("Slapd")
 			os.system("llx-slapd-backup dump " + file_path)
 			golem = self.n4d.get_plugin('Golem')
-			if golem:
+			if golem!=None:
 				golem.ldap.restore_connection=True
 				golem.ldap.connect()
-				return [True,file_path]
+				return n4d.responses.build_successful_call_response(file_path)
 			else:
-				return [False,None]
+				return n4d.responses.build_failed_call_response(BACKUP_ERROR,"Could not find Golem plugin")
 		except Exception as e:
-			return [False,str(e)]
+			return n4d.responses.build_failed_call_response(BACKUP_ERROR,str(e))
 		
 	#def backup
 	
@@ -154,9 +157,9 @@ class SlapdManager:
 		try:
 			if os.path.exists(file_path):
 				os.system("llx-slapd-backup restore " + file_path)
-				return [True,""]
+				return n4d.responses.build_successful_call_response(file_path)
 		except Exception as e:
-			return [False,str(e)]
+			return n4d.responses.build_failed_call_response(RESTORE_ERROR,str(e))
 	#def restore
 	
 	def reset_slapd(self):
