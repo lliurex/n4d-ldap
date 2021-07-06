@@ -1,3 +1,9 @@
+n4d-ldap (0.58) focal; urgency=medium
+
+  * fixed backup/restore responses
+
+ -- Hector Garcia Huerta <hectorgh@gmail.com>  Tue, 06 Jul 2021 13:51:45 +0200
+
 n4d-ldap (0.57) focal; urgency=medium
 
   * get_backup_name standarization
